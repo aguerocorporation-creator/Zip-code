@@ -220,15 +220,18 @@ header span{font-size:12px;color:#aaa}
           <option value="Watching">Watching</option>
         </select>
       </div>
-      <div class="form-field"><label>Active listings</label><input type="number" id="f-active" placeholder="112"/></div>
-      <div class="form-field"><label>Pending</label><input type="number" id="f-pending" placeholder="34"/></div>
+      <div class="form-field"><label>Active listings</label><input type="number" id="f-active" placeholder="112" oninput="autoCalc()"/></div>
+      <div class="form-field"><label>Pending</label><input type="number" id="f-pending" placeholder="34" oninput="autoCalc()"/></div>
       <div class="form-field"><label>Sold (last 30d)</label><input type="number" id="f-sold" placeholder="39"/></div>
+      <div class="form-field"><label>Week of (date)</label><input type="date" id="f-date"/></div>
       <div class="form-field"><label>Median days on market</label><input type="number" id="f-dom" placeholder="28"/></div>
       <div class="form-field"><label>Avg days on market</label><input type="number" id="f-dom-avg" placeholder="43"/></div>
       <div class="form-field"><label>% sold in 0–30 days</label><input type="number" id="f-fast" placeholder="61"/></div>
-      <div class="form-field"><label>List-to-sale ratio (%)</label><input type="number" id="f-lsr" placeholder="99" step="0.1"/></div>
-      <div class="form-field"><label>Avg price drop ($)</label><input type="number" id="f-drop-amt" placeholder="13087"/></div>
-      <div class="form-field"><label>Avg price drop (%)</label><input type="number" id="f-drop-pct" placeholder="4.95" step="0.01"/></div>
+      <div class="form-field"><label>List-to-sale ratio (%)</label><input type="number" id="f-lsr" placeholder="99" step="0.1" oninput="autoCalc()"/></div>
+      <div class="form-field"><label>Avg price drop ($)</label><input type="number" id="f-drop-amt" placeholder="13087" oninput="autoCalc()"/></div>
+      <div class="form-field"><label>Avg list price ($) <span style="color:#1e8449;font-size:10px">for auto %</span></label><input type="number" id="f-list-price" placeholder="264000" oninput="autoCalc()"/></div>
+      <div class="form-field"><label>Avg price drop % <span style="color:#aaa;font-size:10px">auto-filled</span></label><input type="number" id="f-drop-pct" placeholder="4.95" step="0.01" style="background:#f8f8f8"/></div>
+      <div class="form-field"><label>Demand ratio % <span style="color:#aaa;font-size:10px">auto-filled</span></label><input type="number" id="f-demand" placeholder="30" style="background:#f8f8f8" readonly/></div>
       <div class="form-field"><label>Competition score (1–10)</label><input type="number" id="f-comp" placeholder="7.5" step="0.1" min="1" max="10"/></div>
       <div class="form-field"><label>Distress level</label>
         <select id="f-distress">
@@ -423,16 +426,37 @@ function showPage(name, zipKey) {
   if (name==='detail' && zipKey) { renderDetail(zipKey); }
 }
 
+// ── AUTO CALCULATIONS ────────────────────────────────────
+function autoCalc() {
+  const active    = parseFloat(document.getElementById('f-active').value) || 0;
+  const pending   = parseFloat(document.getElementById('f-pending').value) || 0;
+  const dropAmt   = parseFloat(document.getElementById('f-drop-amt').value) || 0;
+  const listPrice = parseFloat(document.getElementById('f-list-price').value) || 0;
+  const lsr       = parseFloat(document.getElementById('f-lsr').value) || 0;
+
+  // Auto demand ratio
+  if (active > 0 && pending > 0) {
+    document.getElementById('f-demand').value = ((pending / active) * 100).toFixed(1);
+  }
+  // Auto price drop %
+  if (dropAmt > 0 && listPrice > 0) {
+    document.getElementById('f-drop-pct').value = ((dropAmt / listPrice) * 100).toFixed(2);
+  }
+}
+
 function resetForm() {
   editingZip = null;
   document.getElementById('form-title').textContent = 'Add new zip code';
   document.getElementById('delete-btn').style.display = 'none';
-  ['f-zip','f-active','f-pending','f-sold','f-dom','f-dom-avg','f-fast','f-lsr','f-drop-amt','f-drop-pct','f-comp','f-low-sale','f-works','f-doesnt','f-notes'].forEach(id => {
+  ['f-zip','f-active','f-pending','f-sold','f-dom','f-dom-avg','f-fast','f-lsr',
+   'f-drop-amt','f-list-price','f-drop-pct','f-demand','f-comp','f-low-sale','f-works','f-doesnt','f-notes'].forEach(id => {
     document.getElementById(id).value = '';
   });
   document.getElementById('f-zip').disabled = false;
   document.getElementById('f-role').value = 'Main focus';
   document.getElementById('f-distress').value = 'Moderate';
+  // Default date to today
+  document.getElementById('f-date').value = new Date().toISOString().split('T')[0];
 }
 
 function editZip(zipKey) {
@@ -452,14 +476,18 @@ function editZip(zipKey) {
     document.getElementById('f-active').value   = latest.active||'';
     document.getElementById('f-pending').value  = latest.pending||'';
     document.getElementById('f-sold').value     = latest.sold||'';
+    document.getElementById('f-date').value     = latest.isoDate || new Date().toISOString().split('T')[0];
     document.getElementById('f-dom').value      = latest.dom||'';
     document.getElementById('f-dom-avg').value  = latest.domAvg||'';
     document.getElementById('f-fast').value     = latest.fast||'';
     document.getElementById('f-lsr').value      = latest.lsr||'';
     document.getElementById('f-drop-amt').value = latest.dropAmt||'';
+    document.getElementById('f-list-price').value = latest.listPrice||'';
     document.getElementById('f-drop-pct').value = latest.dropPct||'';
+    document.getElementById('f-demand').value   = latest.active > 0 ? ((latest.pending/latest.active)*100).toFixed(1) : '';
     document.getElementById('f-comp').value     = latest.comp||'';
     document.getElementById('f-low-sale').value = latest.lowSale||'';
+    autoCalc();
   }
   showPage('add');
 }
@@ -467,19 +495,24 @@ function editZip(zipKey) {
 async function saveZip() {
   const zipKey = (document.getElementById('f-zip').value||'').trim();
   if (!zipKey) { alert('Enter a zip code'); return; }
+  const isoDate = document.getElementById('f-date').value || new Date().toISOString().split('T')[0];
+  const dateLabel = new Date(isoDate + 'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
   const entry = {
-    date: new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}),
-    active:   parseFloat(document.getElementById('f-active').value)||0,
-    pending:  parseFloat(document.getElementById('f-pending').value)||0,
-    sold:     parseFloat(document.getElementById('f-sold').value)||0,
-    dom:      parseFloat(document.getElementById('f-dom').value)||0,
-    domAvg:   parseFloat(document.getElementById('f-dom-avg').value)||0,
-    fast:     parseFloat(document.getElementById('f-fast').value)||0,
-    lsr:      parseFloat(document.getElementById('f-lsr').value)||0,
-    dropAmt:  parseFloat(document.getElementById('f-drop-amt').value)||0,
-    dropPct:  parseFloat(document.getElementById('f-drop-pct').value)||0,
-    comp:     parseFloat(document.getElementById('f-comp').value)||0,
-    lowSale:  parseFloat(document.getElementById('f-low-sale').value)||0,
+    date: dateLabel,
+    isoDate: isoDate,
+    active:    parseFloat(document.getElementById('f-active').value)||0,
+    pending:   parseFloat(document.getElementById('f-pending').value)||0,
+    sold:      parseFloat(document.getElementById('f-sold').value)||0,
+    dom:       parseFloat(document.getElementById('f-dom').value)||0,
+    domAvg:    parseFloat(document.getElementById('f-dom-avg').value)||0,
+    fast:      parseFloat(document.getElementById('f-fast').value)||0,
+    lsr:       parseFloat(document.getElementById('f-lsr').value)||0,
+    dropAmt:   parseFloat(document.getElementById('f-drop-amt').value)||0,
+    listPrice: parseFloat(document.getElementById('f-list-price').value)||0,
+    dropPct:   parseFloat(document.getElementById('f-drop-pct').value)||0,
+    demand:    parseFloat(document.getElementById('f-demand').value)||0,
+    comp:      parseFloat(document.getElementById('f-comp').value)||0,
+    lowSale:   parseFloat(document.getElementById('f-low-sale').value)||0,
   };
   if (!db.zips[zipKey]) {
     db.zips[zipKey] = { history:[], role:'', distress:'Moderate', works:'', doesnt:'', notes:'' };
@@ -613,12 +646,13 @@ function renderDetail(zipKey) {
   const score = investorScore(z);
   const works  = (z.works||'').split(',').map(s=>s.trim()).filter(Boolean);
   const doesnt = (z.doesnt||'').split(',').map(s=>s.trim()).filter(Boolean);
-  const histRows = [...z.history].reverse().map((h,i)=>`
+  const histRows = [...z.history].reverse().map((h,i) => `
     <div class="history-row">
-      <span class="history-date">${h.date}</span>
+      <span class="history-date" style="font-weight:${i===0?'600':'400'};color:${i===0?'#1a1a1a':'#888'}">${h.date}</span>
       <span class="history-val">${h.pending} pend</span>
       <span class="history-val">${h.dom}d DOM</span>
       <span class="history-val">-${h.dropPct}%</span>
+      <span class="history-val" style="color:#888">${h.active} active</span>
       ${i===0?'<span style="font-size:10px;color:#1e8449;font-weight:600">Latest</span>':''}
     </div>`).join('');
 
@@ -634,16 +668,22 @@ function renderDetail(zipKey) {
       </div>
     </div>
     ${l?`<div class="metrics-grid">
+      <div class="metric-card"><div class="metric-label">Week of</div><div class="metric-value" style="font-size:14px;font-weight:600">${l.date}</div></div>
       <div class="metric-card"><div class="metric-label">Active listings</div><div class="metric-value">${l.active}</div></div>
-      <div class="metric-card"><div class="metric-label">Pending</div><div class="metric-value">${l.pending}</div><div class="metric-sub">Demand ratio: ${((l.pending/l.active)*100).toFixed(0)}%</div></div>
+      <div class="metric-card"><div class="metric-label">Pending</div><div class="metric-value">${l.pending}</div><div class="metric-sub">Demand ratio: ${l.active>0?((l.pending/l.active)*100).toFixed(0):0}%</div></div>
       <div class="metric-card"><div class="metric-label">Sold (30d)</div><div class="metric-value">${l.sold}</div></div>
       <div class="metric-card"><div class="metric-label">Median DOM</div><div class="metric-value ${l.dom<=21?'good':l.dom<=35?'warn':'bad'}">${l.dom}d</div><div class="metric-sub">Avg: ${l.domAvg}d</div></div>
       <div class="metric-card"><div class="metric-label">Sold in 0–30d</div><div class="metric-value ${l.fast>=60?'good':l.fast>=40?'warn':'bad'}">${l.fast}%</div></div>
       <div class="metric-card"><div class="metric-label">List-to-sale ratio</div><div class="metric-value ${l.lsr>=99?'good':l.lsr>=97?'warn':'bad'}">${l.lsr}%</div></div>
-      <div class="metric-card"><div class="metric-label">Avg price drop</div><div class="metric-value warn">-$${l.dropAmt.toLocaleString()}</div><div class="metric-sub">-${l.dropPct}% avg</div></div>
+      <div class="metric-card"><div class="metric-label">Avg price drop</div><div class="metric-value warn">-$${l.dropAmt.toLocaleString()}</div><div class="metric-sub">${l.dropPct>0?'-'+l.dropPct+'% avg':l.listPrice>0?'Enter list price to auto-calc':''}</div></div>
       <div class="metric-card"><div class="metric-label">Competition score</div><div class="metric-value ${l.comp<=6?'good':l.comp<=8?'warn':'bad'}">${l.comp}/10</div></div>
       ${l.lowSale?`<div class="metric-card"><div class="metric-label">Low sale (distress)</div><div class="metric-value bad">$${l.lowSale.toLocaleString()}</div></div>`:''}
+      ${prev?`<div class="metric-card"><div class="metric-label">DOM vs last week</div><div class="metric-value ${l.dom<prev.dom?'good':l.dom>prev.dom?'bad':''}"> ${l.dom<prev.dom?'▼ '+Math.abs(l.dom-prev.dom)+'d faster':l.dom>prev.dom?'▲ '+(l.dom-prev.dom)+'d slower':'No change'}</div></div>`:''}
+      ${prev?`<div class="metric-card"><div class="metric-label">Pending vs last week</div><div class="metric-value ${l.pending>prev.pending?'good':l.pending<prev.pending?'bad':''}">${l.pending>prev.pending?'▲ '+(l.pending-prev.pending)+' more':l.pending<prev.pending?'▼ '+Math.abs(l.pending-prev.pending)+' less':'No change'}</div></div>`:''}
     </div>`:''}
+    <div style="background:#fffbf0;border:1px solid #f0e0b0;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:12px;color:#856404">
+      💡 To log this week's numbers tap <strong>Update this week's numbers</strong> — pick the date and fill in what changed.
+    </div>
     <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
       <button class="btn-primary" onclick="editZip('${zipKey}')">Update this week's numbers</button>
     </div>
