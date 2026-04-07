@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Zip Code Market Tracker</title>
+<title>Weekly ZIP Market Tracker</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -138,6 +138,25 @@ header span{font-size:12px;color:#aaa}
 #toast{position:fixed;bottom:24px;right:24px;background:#1a1a1a;color:#fff;padding:10px 18px;border-radius:8px;font-size:13px;z-index:999;opacity:0;transform:translateY(6px);transition:opacity .2s,transform .2s;pointer-events:none}
 #toast.show{opacity:1;transform:translateY(0)}
 
+
+/* WEEKLY MARKET READ */
+.market-read-card{background:#fff;border-radius:12px;border:1px solid #e0e0e0;padding:1.25rem;margin-bottom:12px}
+.market-read-card h3{font-size:13px;font-weight:600;margin-bottom:14px;color:#1a1a1a}
+.market-read-top{display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap}
+.mkt-badge{font-size:11px;font-weight:700;padding:4px 12px;border-radius:20px;letter-spacing:.03em}
+.mkt-hot{background:#D4EDDA;color:#155724}
+.mkt-neutral{background:#FFF3CD;color:#856404}
+.mkt-slow{background:#F8D7DA;color:#721c24}
+.action-attack{background:#1a1a1a;color:#fff}
+.action-watch{background:#FFF3CD;color:#856404}
+.action-avoid{background:#F8D7DA;color:#721c24}
+.mkt-score{font-size:26px;font-weight:700;color:#1a1a1a;line-height:1}
+.mkt-score-label{font-size:11px;color:#888;margin-top:2px}
+.mkt-summary{font-size:13px;color:#444;line-height:1.6;padding:10px 12px;background:#f8f8f8;border-radius:8px;margin-top:8px}
+.calc-display{background:#f8f8f8;border:1px solid #e8e8e8;border-radius:8px;padding:8px 10px;font-size:13px;color:#555;font-weight:500;min-height:36px;display:flex;align-items:center}
+.auto-label{font-size:10px;background:#e8f5ee;color:#155724;border-radius:10px;padding:1px 6px;font-weight:600;margin-left:4px}
+.form-field label{display:flex;align-items:center;gap:4px}
+
 /* MOBILE */
 @media(max-width:640px){
   header{padding:0 12px}
@@ -156,7 +175,7 @@ header span{font-size:12px;color:#aaa}
 <body>
 
 <header style="position:relative">
-  <h1>📍 Zip Code Market Tracker</h1>
+  <h1>📍 Weekly ZIP Market Tracker</h1>
   <div style="display:flex;align-items:center;gap:10px">
     <span id="hdr-date"></span>
     <button class="sync-btn" onclick="toggleSyncDropdown()" id="sync-btn">
@@ -222,29 +241,39 @@ header span{font-size:12px;color:#aaa}
       </div>
       <div class="form-field"><label>Active listings</label><input type="number" id="f-active" placeholder="112" oninput="autoCalc()"/></div>
       <div class="form-field"><label>Pending</label><input type="number" id="f-pending" placeholder="34" oninput="autoCalc()"/></div>
-      <div class="form-field"><label>Sold (last 30d)</label><input type="number" id="f-sold" placeholder="39"/></div>
+      <div class="form-field"><label>Sold (7d)</label><input type="number" id="f-sold" placeholder="39" oninput="autoCalc()"/></div>
+      <div class="form-field"><label>Expired / Cancelled (7d)</label><input type="number" id="f-expired" placeholder="0" oninput="autoCalc()"/></div>
       <div class="form-field"><label>Week of (date)</label><input type="date" id="f-date"/></div>
       <div class="form-field"><label>Median days on market</label><input type="number" id="f-dom" placeholder="28"/></div>
       <div class="form-field"><label>Avg days on market</label><input type="number" id="f-dom-avg" placeholder="43"/></div>
       <div class="form-field"><label>% sold in 0–30 days</label><input type="number" id="f-fast" placeholder="61"/></div>
       <div class="form-field"><label>List-to-sale ratio (%)</label><input type="number" id="f-lsr" placeholder="99" step="0.1" oninput="autoCalc()"/></div>
       <div class="form-field"><label>Avg price drop ($)</label><input type="number" id="f-drop-amt" placeholder="13087" oninput="autoCalc()"/></div>
-      <div class="form-field"><label>Avg list price ($) <span style="color:#1e8449;font-size:10px">for auto %</span></label><input type="number" id="f-list-price" placeholder="264000" oninput="autoCalc()"/></div>
-      <div class="form-field"><label>Avg price drop % <span style="color:#aaa;font-size:10px">auto-filled</span></label><input type="number" id="f-drop-pct" placeholder="4.95" step="0.01" style="background:#f8f8f8"/></div>
-      <div class="form-field"><label>Demand ratio % <span style="color:#aaa;font-size:10px">auto-filled</span></label><input type="number" id="f-demand" placeholder="30" style="background:#f8f8f8" readonly/></div>
-      <div class="form-field"><label>Competition score (1–10)</label><input type="number" id="f-comp" placeholder="7.5" step="0.1" min="1" max="10"/></div>
-      <div class="form-field"><label>Distress level</label>
-        <select id="f-distress">
-          <option value="High">High</option>
-          <option value="Moderate">Moderate</option>
-          <option value="Low">Low</option>
-        </select>
-      </div>
+      <div class="form-field"><label>Avg list price ($)</label><input type="number" id="f-list-price" placeholder="264000" oninput="autoCalc()"/></div>
+      <div class="form-field"><label>Avg price drop % <span class="auto-label">auto</span></label><div class="calc-display" id="f-drop-pct-disp">—</div><input type="hidden" id="f-drop-pct"/></div>
+      <div class="form-field"><label>Weekly demand ratio <span class="auto-label">auto</span></label><div class="calc-display" id="f-demand-disp">—</div><input type="hidden" id="f-demand"/></div>
+      <div class="form-field"><label>Competition score (1–10) <span class="auto-label">auto</span></label><div class="calc-display" id="f-comp-disp">—</div><input type="hidden" id="f-comp"/></div>
+      <div class="form-field"><label>Distress level <span class="auto-label">auto</span></label><div class="calc-display" id="f-distress-disp">—</div><input type="hidden" id="f-distress" value="Moderate"/></div>
       <div class="form-field"><label>Low sale price ($)</label><input type="number" id="f-low-sale" placeholder="75000"/></div>
     </div>
     <div class="form-field" style="margin-bottom:14px"><label>What works here</label><textarea id="f-works" placeholder="Distressed deals, moderate rehabs, safer flips"></textarea></div>
     <div class="form-field" style="margin-bottom:14px"><label>What doesn't work</label><textarea id="f-doesnt" placeholder="Expecting fast flips, going too cheap"></textarea></div>
     <div class="form-field" style="margin-bottom:14px"><label>Notes / investor read</label><textarea id="f-notes" placeholder="Your analysis and weekly observations..."></textarea></div>
+    <div id="weekly-market-read" style="display:none;margin-bottom:14px">
+      <div class="market-read-card" style="border:1px solid #d0e8d8;background:#f8fdf9">
+        <h3>📊 Weekly Market Read</h3>
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">
+          <div>
+            <div class="market-read-top">
+              <div><div class="mkt-score" id="mkt-zip-score">—</div><div class="mkt-score-label">Weekly ZIP score / 10</div></div>
+              <span class="mkt-badge" id="mkt-status-badge">—</span>
+              <span class="mkt-badge" id="mkt-action-badge">—</span>
+            </div>
+          </div>
+        </div>
+        <div class="mkt-summary" id="mkt-summary">Enter market data above to generate your weekly read.</div>
+      </div>
+    </div>
     <div class="form-actions">
       <button class="btn-primary" onclick="saveZip()">Save zip code</button>
       <button class="btn-secondary" onclick="showPage('dashboard')">Cancel</button>
@@ -426,21 +455,128 @@ function showPage(name, zipKey) {
   if (name==='detail' && zipKey) { renderDetail(zipKey); }
 }
 
-// ── AUTO CALCULATIONS ────────────────────────────────────
-function autoCalc() {
-  const active    = parseFloat(document.getElementById('f-active').value) || 0;
-  const pending   = parseFloat(document.getElementById('f-pending').value) || 0;
-  const dropAmt   = parseFloat(document.getElementById('f-drop-amt').value) || 0;
-  const listPrice = parseFloat(document.getElementById('f-list-price').value) || 0;
-  const lsr       = parseFloat(document.getElementById('f-lsr').value) || 0;
+// ── WEEKLY SCORING ENGINE ────────────────────────────────
+function calcWeeklyScore({ active, pending, sold, expired, domAvg, fast, lsr, dropAmt, listPrice }) {
+  // ── Demand ratio (pending ÷ active) ───────────────────
+  const demandRatio = active > 0 ? pending / active : 0;
 
-  // Auto demand ratio
-  if (active > 0 && pending > 0) {
-    document.getElementById('f-demand').value = ((pending / active) * 100).toFixed(1);
+  // ── Avg price drop % ──────────────────────────────────
+  const dropPct = listPrice > 0 ? (dropAmt / listPrice) * 100 : 0;
+
+  // ── Component scores (0–10 scale) ─────────────────────
+  // Demand: 0–2.5 pts — higher pending/active = stronger
+  const demandScore = Math.min(2.5, demandRatio * 2.5);
+
+  // Velocity: 0–2 pts — sold (7d), normalised at 10 = full
+  const velocityScore = Math.min(2, (sold / 10) * 2);
+
+  // DOM: 0–2 pts — lower = better (0 DOM → 2, 90+ → 0)
+  const domScore = domAvg > 0 ? Math.max(0, 2 - (domAvg / 45)) : 1;
+
+  // % sold 0–30d: 0–2 pts
+  const speed30Score = Math.min(2, (fast / 100) * 2);
+
+  // LSR: 0–0.5 pts
+  const ltsScore = lsr >= 100 ? 0.5 : lsr >= 98 ? 0.35 : lsr >= 95 ? 0.15 : 0;
+
+  // Expired/cancelled PENALTY — up to 1.5 pts off
+  const expiredPenalty = Math.min(1.5, active > 0 ? (expired / active) * 3 : 0);
+
+  const raw = demandScore + velocityScore + domScore + speed30Score + ltsScore - expiredPenalty;
+  const zipScore = Math.max(0, Math.min(10, raw));
+
+  // ── Distress level ────────────────────────────────────
+  const expiredRate = active > 0 ? expired / active : 0;
+  const distressRaw = (expiredRate * 4) + (dropPct > 3 ? 2 : dropPct > 1 ? 1 : 0) + (domAvg > 60 ? 2 : domAvg > 30 ? 1 : 0);
+  const distress = distressRaw >= 5 ? 'High' : distressRaw >= 2.5 ? 'Moderate' : 'Low';
+
+  // ── Competition score (1–10) ──────────────────────────
+  const compRaw = (demandRatio * 3) + (fast / 20) + (lsr >= 100 ? 1 : 0) - (dropPct * 0.3);
+  const comp = Math.max(1, Math.min(10, Math.round(compRaw + 3)));
+
+  // ── Market status ─────────────────────────────────────
+  const status = zipScore >= 7 ? 'Hot' : zipScore >= 4 ? 'Neutral' : 'Slow';
+
+  // ── Recommended action ────────────────────────────────
+  let action;
+  if (status === 'Hot')               action = 'Watch';
+  else if (status === 'Neutral')      action = 'Watch';
+  else if (distress === 'High')       action = 'Attack';
+  else                                action = 'Avoid';
+
+  // ── Summary sentence ─────────────────────────────────
+  const summary = generateWeeklySummary({ status, action, distress, demandRatio, sold, expired, domAvg, fast, dropPct, zipScore });
+
+  return { demandRatio, dropPct, comp, distress, zipScore: zipScore.toFixed(1), status, action, summary };
+}
+
+function generateWeeklySummary({ status, action, distress, demandRatio, sold, expired, domAvg, fast, dropPct, zipScore }) {
+  if (status === 'Hot') {
+    if (demandRatio > 0.7 && fast > 60)
+      return 'Strong pending activity and fast sales indicate healthy demand — expect less negotiating room and higher competition.';
+    if (sold > 8 && domAvg < 20)
+      return 'Rapid sales velocity and low days on market confirm a seller-driven ZIP. Less room for below-market offers.';
+    return 'Above-average demand and strong weekly sales make this a competitive ZIP. Monitor closely but expect limited investor discount opportunity.';
   }
-  // Auto price drop %
-  if (dropAmt > 0 && listPrice > 0) {
-    document.getElementById('f-drop-pct').value = ((dropAmt / listPrice) * 100).toFixed(2);
+  if (status === 'Slow' && distress === 'High') {
+    if (expired > sold)
+      return 'More listings expiring than selling — strong signal of motivated sellers and stale inventory. Priority ZIP for direct mail.';
+    if (dropPct > 3)
+      return 'Rising price reductions and high distress suggest sellers are losing confidence. Strong negotiating position for investors.';
+    return 'High inventory, weak demand, and rising distress suggest a slower ZIP with real investor opportunity. Allocate mail budget here.';
+  }
+  if (status === 'Slow' && distress !== 'High') {
+    return 'Slow market but distress is not yet elevated — sellers are not motivated enough. Hold mail spend and monitor for another week.';
+  }
+  if (demandRatio >= 0.4 && domAvg <= 45)
+    return 'Moderate demand and average days on market suggest a balanced ZIP worth watching for emerging opportunity.';
+  if (expired > 3)
+    return 'Mixed signals — moderate demand but rising expired listings. Watch closely before committing mail budget.';
+  return 'Balanced market conditions this week. Continue monitoring pending and expired counts for a clearer direction.';
+}
+
+function autoCalc() {
+  const active    = parseFloat(document.getElementById('f-active').value)    || 0;
+  const pending   = parseFloat(document.getElementById('f-pending').value)   || 0;
+  const sold      = parseFloat(document.getElementById('f-sold').value)      || 0;
+  const expired   = parseFloat(document.getElementById('f-expired').value)   || 0;
+  const domAvg    = parseFloat(document.getElementById('f-dom-avg').value)   || 0;
+  const fast      = parseFloat(document.getElementById('f-fast').value)      || 0;
+  const lsr       = parseFloat(document.getElementById('f-lsr').value)       || 0;
+  const dropAmt   = parseFloat(document.getElementById('f-drop-amt').value)  || 0;
+  const listPrice = parseFloat(document.getElementById('f-list-price').value)|| 0;
+
+  const c = calcWeeklyScore({ active, pending, sold, expired, domAvg, fast, lsr, dropAmt, listPrice });
+
+  // Update hidden inputs (used in save)
+  document.getElementById('f-demand').value   = c.demandRatio.toFixed(2);
+  document.getElementById('f-drop-pct').value = c.dropPct.toFixed(2);
+  document.getElementById('f-comp').value     = c.comp;
+  document.getElementById('f-distress').value = c.distress;
+
+  // Update display fields
+  document.getElementById('f-demand-disp').textContent   = c.demandRatio.toFixed(2);
+  document.getElementById('f-drop-pct-disp').textContent = c.dropPct.toFixed(1) + '%';
+  document.getElementById('f-comp-disp').textContent     = c.comp + ' / 10';
+  document.getElementById('f-distress-disp').textContent = c.distress;
+
+  // Show weekly market read if any data entered
+  const hasData = active > 0 || pending > 0 || sold > 0;
+  const readEl = document.getElementById('weekly-market-read');
+  if (readEl) readEl.style.display = hasData ? 'block' : 'none';
+
+  if (hasData) {
+    document.getElementById('mkt-zip-score').textContent = c.zipScore + ' / 10';
+
+    const statusBadge = document.getElementById('mkt-status-badge');
+    statusBadge.textContent = c.status;
+    statusBadge.className = 'mkt-badge ' + (c.status==='Hot'?'mkt-hot':c.status==='Neutral'?'mkt-neutral':'mkt-slow');
+
+    const actionBadge = document.getElementById('mkt-action-badge');
+    actionBadge.textContent = c.action;
+    actionBadge.className = 'mkt-badge ' + (c.action==='Attack'?'action-attack':c.action==='Watch'?'action-watch':'action-avoid');
+
+    document.getElementById('mkt-summary').textContent = c.summary;
   }
 }
 
@@ -448,14 +584,20 @@ function resetForm() {
   editingZip = null;
   document.getElementById('form-title').textContent = 'Add new zip code';
   document.getElementById('delete-btn').style.display = 'none';
-  ['f-zip','f-active','f-pending','f-sold','f-dom','f-dom-avg','f-fast','f-lsr',
+  ['f-zip','f-active','f-pending','f-sold','f-expired','f-dom','f-dom-avg','f-fast','f-lsr',
    'f-drop-amt','f-list-price','f-drop-pct','f-demand','f-comp','f-low-sale','f-works','f-doesnt','f-notes'].forEach(id => {
-    document.getElementById(id).value = '';
+    const el = document.getElementById(id);
+    if (el) el.value = '';
   });
+  ['f-demand-disp','f-drop-pct-disp','f-comp-disp','f-distress-disp'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = '—';
+  });
+  const readEl = document.getElementById('weekly-market-read');
+  if (readEl) readEl.style.display = 'none';
   document.getElementById('f-zip').disabled = false;
   document.getElementById('f-role').value = 'Main focus';
   document.getElementById('f-distress').value = 'Moderate';
-  // Default date to today
   document.getElementById('f-date').value = new Date().toISOString().split('T')[0];
 }
 
@@ -480,13 +622,11 @@ function editZip(zipKey) {
     document.getElementById('f-dom').value      = latest.dom||'';
     document.getElementById('f-dom-avg').value  = latest.domAvg||'';
     document.getElementById('f-fast').value     = latest.fast||'';
-    document.getElementById('f-lsr').value      = latest.lsr||'';
-    document.getElementById('f-drop-amt').value = latest.dropAmt||'';
-    document.getElementById('f-list-price').value = latest.listPrice||'';
-    document.getElementById('f-drop-pct').value = latest.dropPct||'';
-    document.getElementById('f-demand').value   = latest.active > 0 ? ((latest.pending/latest.active)*100).toFixed(1) : '';
-    document.getElementById('f-comp').value     = latest.comp||'';
-    document.getElementById('f-low-sale').value = latest.lowSale||'';
+    document.getElementById('f-lsr').value        = latest.lsr||'';
+    document.getElementById('f-drop-amt').value   = latest.dropAmt||'';
+    document.getElementById('f-list-price').value  = latest.listPrice||'';
+    document.getElementById('f-low-sale').value   = latest.lowSale||'';
+    if (document.getElementById('f-expired')) document.getElementById('f-expired').value = latest.expired||'';
     autoCalc();
   }
   showPage('add');
@@ -497,28 +637,36 @@ async function saveZip() {
   if (!zipKey) { alert('Enter a zip code'); return; }
   const isoDate = document.getElementById('f-date').value || new Date().toISOString().split('T')[0];
   const dateLabel = new Date(isoDate + 'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+  const active    = parseFloat(document.getElementById('f-active').value)||0;
+  const pending   = parseFloat(document.getElementById('f-pending').value)||0;
+  const sold      = parseFloat(document.getElementById('f-sold').value)||0;
+  const expired   = parseFloat(document.getElementById('f-expired').value)||0;
+  const dom       = parseFloat(document.getElementById('f-dom').value)||0;
+  const domAvg    = parseFloat(document.getElementById('f-dom-avg').value)||0;
+  const fast      = parseFloat(document.getElementById('f-fast').value)||0;
+  const lsr       = parseFloat(document.getElementById('f-lsr').value)||0;
+  const dropAmt   = parseFloat(document.getElementById('f-drop-amt').value)||0;
+  const listPrice = parseFloat(document.getElementById('f-list-price').value)||0;
+  const lowSale   = parseFloat(document.getElementById('f-low-sale').value)||0;
+  const calc = calcWeeklyScore({ active, pending, sold, expired, domAvg, fast, lsr, dropAmt, listPrice });
   const entry = {
-    date: dateLabel,
-    isoDate: isoDate,
-    active:    parseFloat(document.getElementById('f-active').value)||0,
-    pending:   parseFloat(document.getElementById('f-pending').value)||0,
-    sold:      parseFloat(document.getElementById('f-sold').value)||0,
-    dom:       parseFloat(document.getElementById('f-dom').value)||0,
-    domAvg:    parseFloat(document.getElementById('f-dom-avg').value)||0,
-    fast:      parseFloat(document.getElementById('f-fast').value)||0,
-    lsr:       parseFloat(document.getElementById('f-lsr').value)||0,
-    dropAmt:   parseFloat(document.getElementById('f-drop-amt').value)||0,
-    listPrice: parseFloat(document.getElementById('f-list-price').value)||0,
-    dropPct:   parseFloat(document.getElementById('f-drop-pct').value)||0,
-    demand:    parseFloat(document.getElementById('f-demand').value)||0,
-    comp:      parseFloat(document.getElementById('f-comp').value)||0,
-    lowSale:   parseFloat(document.getElementById('f-low-sale').value)||0,
+    date: dateLabel, isoDate,
+    active, pending, sold, expired, dom, domAvg, fast, lsr,
+    dropAmt, listPrice, lowSale,
+    dropPct:   parseFloat(calc.dropPct.toFixed(2)),
+    demand:    parseFloat(calc.demandRatio.toFixed(2)),
+    comp:      calc.comp,
+    zipScore:  calc.zipScore,
+    status:    calc.status,
+    action:    calc.action,
+    distress:  calc.distress,
+    summary:   calc.summary,
   };
   if (!db.zips[zipKey]) {
     db.zips[zipKey] = { history:[], role:'', distress:'Moderate', works:'', doesnt:'', notes:'' };
   }
   db.zips[zipKey].role     = document.getElementById('f-role').value;
-  db.zips[zipKey].distress = document.getElementById('f-distress').value;
+  db.zips[zipKey].distress = calc.distress;
   db.zips[zipKey].works    = document.getElementById('f-works').value;
   db.zips[zipKey].doesnt   = document.getElementById('f-doesnt').value;
   db.zips[zipKey].notes    = document.getElementById('f-notes').value;
@@ -546,6 +694,8 @@ async function deleteZip() {
 function investorScore(z) {
   const l = z.history[z.history.length-1];
   if (!l) return 0;
+  // Use stored weekly ZIP score if available, else fall back to old formula
+  if (l.zipScore !== undefined) return Math.round(parseFloat(l.zipScore) * 10);
   let score = 0;
   if (l.dropPct >= 4) score += 25; else if (l.dropPct >= 2) score += 15;
   const demandRatio = l.pending / (l.active||1);
@@ -582,7 +732,7 @@ function renderDashboard() {
     const score = investorScore(z);
     const prev = z.history.length>1 ? z.history[z.history.length-2] : null;
     const domChange = l&&prev ? l.dom - prev.dom : null;
-    const domClass = domChange===null?'':domChange<0?'down':domChange>0?'up':'';
+    const domCls = domChange===null?'':domChange<0?'down':domChange>0?'up':'';
     return `<div class="zip-card" onclick="showPage('detail','${k}')">
       <div class="zip-card-top">
         <div><div class="zip-num">${k}</div><div style="margin-top:4px">${distressBadge(z.distress)}</div></div>
@@ -591,14 +741,14 @@ function renderDashboard() {
       ${l?`<div class="zip-metrics">
         <div class="metric-mini"><div class="metric-mini-label">Pending</div><div class="metric-mini-val">${l.pending}</div></div>
         <div class="metric-mini"><div class="metric-mini-label">Active</div><div class="metric-mini-val">${l.active}</div></div>
-        <div class="metric-mini"><div class="metric-mini-label">Median DOM</div><div class="metric-mini-val ${domClass}">${l.dom}d</div></div>
+        <div class="metric-mini"><div class="metric-mini-label">Median DOM</div><div class="metric-mini-val ${domCls}">${l.dom}d</div></div>
         <div class="metric-mini"><div class="metric-mini-label">Price drop avg</div><div class="metric-mini-val warn">-${l.dropPct}%</div></div>
       </div>
       <div class="score-bar-wrap">
-        <div class="score-bar-label"><span>Investor score</span><span>${score}/100</span></div>
+        <div class="score-bar-label"><span>Weekly ZIP score</span><span>${l&&l.zipScore?l.zipScore+'/10':score+'/100'}</span></div>
         <div class="score-bar-track"><div class="score-bar-fill" style="width:${score}%"></div></div>
       </div>`:'<div style="color:#bbb;font-size:12px;margin-top:8px">No data yet — tap to update</div>'}
-      <div class="zip-updated">${l?'Updated '+l.date:'—'} &nbsp;·&nbsp; ${z.history.length} week${z.history.length!==1?'s':''} of data</div>
+      <div class="zip-updated">${l?'Updated '+l.date:'—'} &nbsp;·&nbsp; ${l&&l.status?l.status+' · '+l.action:z.history.length+' week'+(z.history.length!==1?'s':'')+' of data'}</div>
     </div>`;
   }).join('');
 }
@@ -613,7 +763,7 @@ function renderRanking() {
   const sorted = keys.map(k=>({k,z:db.zips[k],score:investorScore(db.zips[k])})).sort((a,b)=>b.score-a.score);
   const medals=['🥇','🥈','🥉','4️⃣','5️⃣','6️⃣','7️⃣','8️⃣','9️⃣'];
   document.getElementById('rank-table').innerHTML=`
-    <thead><tr><th>Rank</th><th>Zip</th><th>Role</th><th>Distress</th><th>Score</th><th>DOM</th><th>Drop %</th></tr></thead>
+    <thead><tr><th>Rank</th><th>Zip</th><th>Role</th><th>Distress</th><th>ZIP Score</th><th>Status</th><th>Action</th><th>DOM</th><th>Sold (7d)</th><th>Expired (7d)</th></tr></thead>
     <tbody>${sorted.map((item,i)=>{
       const l = item.z.history[item.z.history.length-1];
       return `<tr>
@@ -621,9 +771,12 @@ function renderRanking() {
         <td class="rank-zip">${item.k}</td>
         <td><span class="zip-role ${roleClass(item.z.role)}" style="font-size:11px">${item.z.role}</span></td>
         <td>${distressBadge(item.z.distress)}</td>
-        <td class="rank-score">${item.score}</td>
+        <td class="rank-score">${l&&l.zipScore?l.zipScore:item.score}</td>
+        <td>${l&&l.status?`<span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:12px;background:${l.status==='Hot'?'#D4EDDA':l.status==='Neutral'?'#FFF3CD':'#F8D7DA'};color:${l.status==='Hot'?'#155724':l.status==='Neutral'?'#856404':'#721c24'}">${l.status}</span>`:'—'}</td>
+        <td>${l&&l.action?`<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:12px;background:${l.action==='Attack'?'#1a1a1a':l.action==='Watch'?'#FFF3CD':'#F8D7DA'};color:${l.action==='Attack'?'#fff':l.action==='Watch'?'#856404':'#721c24'}">${l.action}</span>`:'—'}</td>
         <td>${l?l.dom+'d':'—'}</td>
-        <td>${l?'-'+l.dropPct+'%':'—'}</td>
+        <td>${l?l.sold||0:'—'}</td>
+        <td>${l?(l.expired||0):'—'}</td>
       </tr>`;
     }).join('')}</tbody>`;
   const total = sorted.reduce((s,x)=>s+x.score,0)||1;
@@ -650,9 +803,10 @@ function renderDetail(zipKey) {
     <div class="history-row">
       <span class="history-date" style="font-weight:${i===0?'600':'400'};color:${i===0?'#1a1a1a':'#888'}">${h.date}</span>
       <span class="history-val">${h.pending} pend</span>
+      <span class="history-val">${h.sold||0} sold</span>
+      <span class="history-val">${h.expired||0} expired</span>
       <span class="history-val">${h.dom}d DOM</span>
-      <span class="history-val">-${h.dropPct}%</span>
-      <span class="history-val" style="color:#888">${h.active} active</span>
+      <span class="history-val" style="color:#888">${h.status||'—'} · ${h.action||'—'}</span>
       ${i===0?'<span style="font-size:10px;color:#1e8449;font-weight:600">Latest</span>':''}
     </div>`).join('');
 
@@ -670,19 +824,30 @@ function renderDetail(zipKey) {
     ${l?`<div class="metrics-grid">
       <div class="metric-card"><div class="metric-label">Week of</div><div class="metric-value" style="font-size:14px;font-weight:600">${l.date}</div></div>
       <div class="metric-card"><div class="metric-label">Active listings</div><div class="metric-value">${l.active}</div></div>
-      <div class="metric-card"><div class="metric-label">Pending</div><div class="metric-value">${l.pending}</div><div class="metric-sub">Demand ratio: ${l.active>0?((l.pending/l.active)*100).toFixed(0):0}%</div></div>
-      <div class="metric-card"><div class="metric-label">Sold (30d)</div><div class="metric-value">${l.sold}</div></div>
+      <div class="metric-card"><div class="metric-label">Pending</div><div class="metric-value">${l.pending}</div><div class="metric-sub">Demand ratio: ${l.active>0?(l.pending/l.active).toFixed(2):0}</div></div>
+      <div class="metric-card"><div class="metric-label">Sold (7d)</div><div class="metric-value">${l.sold}</div></div>
+      <div class="metric-card"><div class="metric-label">Expired / Cancelled (7d)</div><div class="metric-value ${(l.expired||0)>l.sold?'bad':'warn'}">${l.expired||0}</div></div>
       <div class="metric-card"><div class="metric-label">Median DOM</div><div class="metric-value ${l.dom<=21?'good':l.dom<=35?'warn':'bad'}">${l.dom}d</div><div class="metric-sub">Avg: ${l.domAvg}d</div></div>
-      <div class="metric-card"><div class="metric-label">Sold in 0–30d</div><div class="metric-value ${l.fast>=60?'good':l.fast>=40?'warn':'bad'}">${l.fast}%</div></div>
+      <div class="metric-card"><div class="metric-label">% sold in 0–30d</div><div class="metric-value ${l.fast>=60?'good':l.fast>=40?'warn':'bad'}">${l.fast}%</div></div>
       <div class="metric-card"><div class="metric-label">List-to-sale ratio</div><div class="metric-value ${l.lsr>=99?'good':l.lsr>=97?'warn':'bad'}">${l.lsr}%</div></div>
-      <div class="metric-card"><div class="metric-label">Avg price drop</div><div class="metric-value warn">-$${l.dropAmt.toLocaleString()}</div><div class="metric-sub">${l.dropPct>0?'-'+l.dropPct+'% avg':l.listPrice>0?'Enter list price to auto-calc':''}</div></div>
+      <div class="metric-card"><div class="metric-label">Avg price drop</div><div class="metric-value warn">-$${(l.dropAmt||0).toLocaleString()}</div><div class="metric-sub">${l.dropPct>0?'-'+l.dropPct+'% avg':''}</div></div>
+      <div class="metric-card"><div class="metric-label">Weekly demand ratio</div><div class="metric-value">${l.demand||'—'}</div></div>
       <div class="metric-card"><div class="metric-label">Competition score</div><div class="metric-value ${l.comp<=6?'good':l.comp<=8?'warn':'bad'}">${l.comp}/10</div></div>
       ${l.lowSale?`<div class="metric-card"><div class="metric-label">Low sale (distress)</div><div class="metric-value bad">$${l.lowSale.toLocaleString()}</div></div>`:''}
-      ${prev?`<div class="metric-card"><div class="metric-label">DOM vs last week</div><div class="metric-value ${l.dom<prev.dom?'good':l.dom>prev.dom?'bad':''}"> ${l.dom<prev.dom?'▼ '+Math.abs(l.dom-prev.dom)+'d faster':l.dom>prev.dom?'▲ '+(l.dom-prev.dom)+'d slower':'No change'}</div></div>`:''}
+      ${prev?`<div class="metric-card"><div class="metric-label">DOM vs last week</div><div class="metric-value ${l.dom<prev.dom?'good':l.dom>prev.dom?'bad':''}">${l.dom<prev.dom?'▼ '+Math.abs(l.dom-prev.dom)+'d faster':l.dom>prev.dom?'▲ '+(l.dom-prev.dom)+'d slower':'No change'}</div></div>`:''}
       ${prev?`<div class="metric-card"><div class="metric-label">Pending vs last week</div><div class="metric-value ${l.pending>prev.pending?'good':l.pending<prev.pending?'bad':''}">${l.pending>prev.pending?'▲ '+(l.pending-prev.pending)+' more':l.pending<prev.pending?'▼ '+Math.abs(l.pending-prev.pending)+' less':'No change'}</div></div>`:''}
     </div>`:''}
+    ${l&&l.zipScore?`<div class="market-read-card" style="margin-bottom:12px">
+      <h3>📊 Weekly Market Read</h3>
+      <div class="market-read-top">
+        <div><div class="mkt-score">${l.zipScore} / 10</div><div class="mkt-score-label">Weekly ZIP score</div></div>
+        <span class="mkt-badge ${l.status==='Hot'?'mkt-hot':l.status==='Neutral'?'mkt-neutral':'mkt-slow'}">${l.status||'—'}</span>
+        <span class="mkt-badge ${l.action==='Attack'?'action-attack':l.action==='Watch'?'action-watch':'action-avoid'}">${l.action||'—'}</span>
+      </div>
+      <div class="mkt-summary">${l.summary||''}</div>
+    </div>`:''}
     <div style="background:#fffbf0;border:1px solid #f0e0b0;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:12px;color:#856404">
-      💡 To log this week's numbers tap <strong>Update this week's numbers</strong> — pick the date and fill in what changed.
+      💡 Tap <strong>Update this week's numbers</strong> to log new MLS data and refresh your weekly read.
     </div>
     <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
       <button class="btn-primary" onclick="editZip('${zipKey}')">Update this week's numbers</button>
@@ -710,17 +875,34 @@ async function saveNotes(zipKey) {
 
 // ── SEED DEMO DATA ───────────────────────────────────────
 const PRELOADED = [
-  {zip:'40214',role:'Main focus',distress:'High',works:'Distressed deals, moderate rehabs, safer flips',doesnt:'Expecting fast flips like 40272, going too cheap, ignoring comps',notes:'Sleeper zip. Less competition than 40216, more distress. Best balance.',data:{active:112,pending:34,sold:39,dom:28,domAvg:43,fast:61,lsr:99,dropAmt:13087,dropPct:4.95,comp:7.5,lowSale:75000}},
-  {zip:'40216',role:'High risk / high reward',distress:'High',works:'Aggressive hunting, high upside',doesnt:'Faint of heart, thin margins',notes:'Highest profit, highest risk. 46 pending. Very competitive.',data:{active:130,pending:46,sold:50,dom:22,domAvg:35,fast:68,lsr:100,dropAmt:10000,dropPct:3.8,comp:9,lowSale:60000}},
-  {zip:'40258',role:'Backup deals',distress:'Moderate',works:'Cherry-pick only, selective deals',doesnt:'Volume plays, aggressive bidding',notes:'Selective market. Only move on standout deals.',data:{active:90,pending:28,sold:30,dom:35,domAvg:48,fast:50,lsr:98,dropAmt:8500,dropPct:3.2,comp:6,lowSale:90000}},
-  {zip:'40272',role:'Clean flips',distress:'Low',works:'Clean flips, fast sales, predictable',doesnt:'High-margin expectations, distressed plays',notes:'Tight margins but fast. Low risk, low reward.',data:{active:85,pending:40,sold:45,dom:18,domAvg:24,fast:75,lsr:101,dropAmt:5000,dropPct:1.9,comp:8,lowSale:110000}},
+  {zip:'40214',role:'Main focus',works:'Distressed deals, moderate rehabs, safer flips',doesnt:'Expecting fast flips, going too cheap, ignoring comps',notes:'Sleeper zip. Less competition than 40216, more distress. Best balance.',data:{active:112,pending:34,sold:9,expired:18,dom:28,domAvg:43,fast:61,lsr:99,dropAmt:13087,listPrice:264000,lowSale:75000}},
+  {zip:'40216',role:'High risk / high reward',works:'Aggressive hunting, high upside',doesnt:'Faint of heart, thin margins',notes:'Highest profit, highest risk. 46 pending. Very competitive.',data:{active:130,pending:46,sold:12,expired:8,dom:22,domAvg:35,fast:68,lsr:100,dropAmt:10000,listPrice:248000,lowSale:60000}},
+  {zip:'40258',role:'Backup deals',works:'Cherry-pick only, selective deals',doesnt:'Volume plays, aggressive bidding',notes:'Selective market. Only move on standout deals.',data:{active:90,pending:28,sold:7,expired:12,dom:35,domAvg:48,fast:50,lsr:98,dropAmt:8500,listPrice:266000,lowSale:90000}},
+  {zip:'40272',role:'Clean flips',works:'Clean flips, fast sales, predictable',doesnt:'High-margin expectations, distressed plays',notes:'Tight margins but fast. Low risk, low reward.',data:{active:85,pending:40,sold:11,expired:4,dom:18,domAvg:24,fast:75,lsr:101,dropAmt:5000,listPrice:262000,lowSale:110000}},
 ];
 
 function seedDemo() {
   if (Object.keys(db.zips).length > 0) return;
   PRELOADED.forEach(p => {
-    db.zips[p.zip] = { history:[], role:p.role, distress:p.distress, works:p.works, doesnt:p.doesnt, notes:p.notes };
-    db.zips[p.zip].history.push({ date: new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}), ...p.data });
+    const calc = calcWeeklyScore({
+      active: p.data.active, pending: p.data.pending, sold: p.data.sold,
+      expired: p.data.expired||0, domAvg: p.data.domAvg, fast: p.data.fast,
+      lsr: p.data.lsr, dropAmt: p.data.dropAmt, listPrice: p.data.listPrice||0
+    });
+    db.zips[p.zip] = { history:[], role:p.role, distress:calc.distress, works:p.works, doesnt:p.doesnt, notes:p.notes };
+    db.zips[p.zip].history.push({
+      date: new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}),
+      isoDate: new Date().toISOString().split('T')[0],
+      ...p.data,
+      dropPct: parseFloat(calc.dropPct),
+      demand:  parseFloat(calc.demandRatio),
+      comp:    calc.comp,
+      zipScore: calc.zipScore,
+      status:  calc.status,
+      action:  calc.action,
+      distress: calc.distress,
+      summary: calc.summary,
+    });
   });
   saveLocal();
 }
