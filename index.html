@@ -145,11 +145,15 @@ header span{font-size:12px;color:#aaa}
 .market-read-top{display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap}
 .mkt-badge{font-size:11px;font-weight:700;padding:4px 12px;border-radius:20px;letter-spacing:.03em}
 .mkt-hot{background:#D4EDDA;color:#155724}
-.mkt-neutral{background:#FFF3CD;color:#856404}
-.mkt-slow{background:#F8D7DA;color:#721c24}
+.mkt-stable{background:#D1ECF1;color:#0c5460}
+.mkt-slow{background:#e8e8e8;color:#555}
+.mkt-early-distress{background:#FFF3CD;color:#7a4f0a}
+.mkt-distress{background:#1a1a1a;color:#fff}
 .action-attack{background:#1a1a1a;color:#fff}
-.action-watch{background:#FFF3CD;color:#856404}
-.action-avoid{background:#F8D7DA;color:#721c24}
+.action-watch-retail{background:#D4EDDA;color:#155724}
+.action-watch{background:#D1ECF1;color:#0c5460}
+.action-watch-light{background:#FFF3CD;color:#7a4f0a}
+.action-avoid{background:#e8e8e8;color:#777}
 .mkt-score{font-size:26px;font-weight:700;color:#1a1a1a;line-height:1}
 .mkt-score-label{font-size:11px;color:#888;margin-top:2px}
 .mkt-summary{font-size:13px;color:#444;line-height:1.6;padding:10px 12px;background:#f8f8f8;border-radius:8px;margin-top:8px}
@@ -457,82 +461,135 @@ function showPage(name, zipKey) {
 
 // ── WEEKLY SCORING ENGINE ────────────────────────────────
 function calcWeeklyScore({ active, pending, sold, expired, domAvg, fast, lsr, dropAmt, listPrice }) {
-  // ── Demand ratio (pending ÷ active) ───────────────────
+  // ── Core ratios ───────────────────────────────────────
   const demandRatio = active > 0 ? pending / active : 0;
-
-  // ── Avg price drop % ──────────────────────────────────
-  const dropPct = listPrice > 0 ? (dropAmt / listPrice) * 100 : 0;
-
-  // ── Component scores (0–10 scale) ─────────────────────
-  // Demand: 0–2.5 pts — higher pending/active = stronger
-  const demandScore = Math.min(2.5, demandRatio * 2.5);
-
-  // Velocity: 0–2 pts — sold (7d), normalised at 10 = full
-  const velocityScore = Math.min(2, (sold / 10) * 2);
-
-  // DOM: 0–2 pts — lower = better (0 DOM → 2, 90+ → 0)
-  const domScore = domAvg > 0 ? Math.max(0, 2 - (domAvg / 45)) : 1;
-
-  // % sold 0–30d: 0–2 pts
-  const speed30Score = Math.min(2, (fast / 100) * 2);
-
-  // LSR: 0–0.5 pts
-  const ltsScore = lsr >= 100 ? 0.5 : lsr >= 98 ? 0.35 : lsr >= 95 ? 0.15 : 0;
-
-  // Expired/cancelled PENALTY — up to 1.5 pts off
-  const expiredPenalty = Math.min(1.5, active > 0 ? (expired / active) * 3 : 0);
-
-  const raw = demandScore + velocityScore + domScore + speed30Score + ltsScore - expiredPenalty;
-  const zipScore = Math.max(0, Math.min(10, raw));
-
-  // ── Distress level ────────────────────────────────────
+  const dropPct     = listPrice > 0 ? (dropAmt / listPrice) * 100 : 0;
   const expiredRate = active > 0 ? expired / active : 0;
-  const distressRaw = (expiredRate * 4) + (dropPct > 3 ? 2 : dropPct > 1 ? 1 : 0) + (domAvg > 60 ? 2 : domAvg > 30 ? 1 : 0);
-  const distress = distressRaw >= 5 ? 'High' : distressRaw >= 2.5 ? 'Moderate' : 'Low';
 
-  // ── Competition score (1–10) ──────────────────────────
+  // ── Distress scoring (independent, weighted heavily) ──
+  // expired count and rate are the primary distress signals
+  const expiredDistress = expired >= 10 ? 4 : expired >= 5 ? 3 : expired >= 2 ? 1.5 : 0;
+  const expiredVsSold   = (expired > 0 && sold > 0 && expired >= sold) ? 2 : (expired > sold * 0.5 ? 1 : 0);
+  const dropDistress    = dropPct > 4 ? 2 : dropPct > 2 ? 1 : 0;
+  const domDistress     = domAvg > 60 ? 2 : domAvg > 40 ? 1 : 0;
+  const distressRaw     = expiredDistress + expiredVsSold + dropDistress + domDistress;
+  const distress        = distressRaw >= 7 ? 'High' : distressRaw >= 4 ? 'Moderate' : distressRaw >= 2 ? 'Low' : 'None';
+
+  // ── Market strength score (pure demand/velocity signal) ─
+  // This measures how HOT the market is, NOT investor opportunity
+  const demandScore   = Math.min(2.5, demandRatio * 2.5);
+  const velocityScore = Math.min(2,   (sold / 10) * 2);
+  const domScore      = domAvg > 0 ? Math.max(0, 2 - (domAvg / 45)) : 1;
+  const speed30Score  = Math.min(2,   (fast / 100) * 2);
+  const ltsScore      = lsr >= 100 ? 0.5 : lsr >= 98 ? 0.35 : lsr >= 95 ? 0.15 : 0;
+  const strengthRaw   = demandScore + velocityScore + domScore + speed30Score + ltsScore;
+
+  // ── Opportunity boost (distress in slow market = deals) ─
+  // Low demand + high expired = investor opportunity, not a penalty
+  let opportunityBoost = 0;
+  if (demandRatio < 0.10 && expired >= sold && expired > 0) opportunityBoost += 1.5;
+  else if (demandRatio < 0.20 && expired >= sold && expired > 0) opportunityBoost += 1.0;
+  if (expired >= 5)  opportunityBoost += 0.5;
+  if (expired >= 10) opportunityBoost += 0.5;
+  if (dropPct > 3 && demandRatio < 0.25) opportunityBoost += 0.5;
+
+  // ── ZIP score: strength + opportunity (no expired penalty) ─
+  const rawScore = strengthRaw + opportunityBoost;
+  const zipScore = Math.max(0, Math.min(10, rawScore));
+
+  // ── Competition score (inverse of distress — lower = easier for investors) ─
   const compRaw = (demandRatio * 3) + (fast / 20) + (lsr >= 100 ? 1 : 0) - (dropPct * 0.3);
-  const comp = Math.max(1, Math.min(10, Math.round(compRaw + 3)));
+  const comp    = Math.max(1, Math.min(10, Math.round(compRaw + 3)));
 
-  // ── Market status ─────────────────────────────────────
-  const status = zipScore >= 7 ? 'Hot' : zipScore >= 4 ? 'Neutral' : 'Slow';
+  // ── Market status (5 types) ───────────────────────────
+  let status;
+  if (strengthRaw >= 6.5) {
+    status = 'Hot';
+  } else if (distressRaw >= 7 || (distressRaw >= 4 && demandRatio < 0.25)) {
+    status = 'Distress';
+  } else if (distressRaw >= 2 && demandRatio < 0.30) {
+    status = 'Early Distress';
+  } else if (strengthRaw >= 3.5) {
+    status = 'Stable';
+  } else {
+    status = 'Slow';
+  }
 
   // ── Recommended action ────────────────────────────────
   let action;
-  if (status === 'Hot')               action = 'Watch';
-  else if (status === 'Neutral')      action = 'Watch';
-  else if (distress === 'High')       action = 'Attack';
-  else                                action = 'Avoid';
+  if      (status === 'Hot')            action = 'Watch / Retail';
+  else if (status === 'Stable')         action = 'Watch';
+  else if (status === 'Early Distress') action = 'Watch / Light Attack';
+  else if (status === 'Distress')       action = 'ATTACK';
+  else                                  action = 'Avoid';
 
-  // ── Summary sentence ─────────────────────────────────
-  const summary = generateWeeklySummary({ status, action, distress, demandRatio, sold, expired, domAvg, fast, dropPct, zipScore });
+  // ── Summary ───────────────────────────────────────────
+  const summary = generateWeeklySummary({ status, action, distress, demandRatio, sold, expired, domAvg, fast, dropPct, zipScore, opportunityBoost });
 
   return { demandRatio, dropPct, comp, distress, zipScore: zipScore.toFixed(1), status, action, summary };
 }
 
-function generateWeeklySummary({ status, action, distress, demandRatio, sold, expired, domAvg, fast, dropPct, zipScore }) {
+function generateWeeklySummary({ status, action, distress, demandRatio, sold, expired, domAvg, fast, dropPct, zipScore, opportunityBoost }) {
   if (status === 'Hot') {
-    if (demandRatio > 0.7 && fast > 60)
-      return 'Strong pending activity and fast sales indicate healthy demand — expect less negotiating room and higher competition.';
+    if (demandRatio > 0.6 && fast > 60)
+      return 'Strong pending activity and fast sales confirm a seller-driven market. Expect full-price competition and limited investor discount opportunity.';
     if (sold > 8 && domAvg < 20)
-      return 'Rapid sales velocity and low days on market confirm a seller-driven ZIP. Less room for below-market offers.';
-    return 'Above-average demand and strong weekly sales make this a competitive ZIP. Monitor closely but expect limited investor discount opportunity.';
+      return 'Rapid sales velocity and low DOM confirm buyer demand is strong. Not ideal for below-market offers — monitor for market shifts.';
+    return 'Above-average demand and strong weekly sales make this a retail market. Competition is high and negotiating room is limited.';
   }
-  if (status === 'Slow' && distress === 'High') {
+  if (status === 'Distress') {
     if (expired > sold)
-      return 'More listings expiring than selling — strong signal of motivated sellers and stale inventory. Priority ZIP for direct mail.';
+      return 'High inventory and rising failed listings indicate strong seller pressure. More listings are expiring than selling — this is a high-probability deal zone. Prioritize direct mail and outreach now.';
     if (dropPct > 3)
-      return 'Rising price reductions and high distress suggest sellers are losing confidence. Strong negotiating position for investors.';
-    return 'High inventory, weak demand, and rising distress suggest a slower ZIP with real investor opportunity. Allocate mail budget here.';
+      return 'Significant price reductions and mounting distress signals indicate sellers are losing confidence. Strong negotiating position — allocate mail budget and begin making offers.';
+    return 'High distress signals across multiple indicators. Motivated sellers are present and competition is low. This ZIP is a primary target for direct mail and off-market offers.';
   }
-  if (status === 'Slow' && distress !== 'High') {
-    return 'Slow market but distress is not yet elevated — sellers are not motivated enough. Hold mail spend and monitor for another week.';
+  if (status === 'Early Distress') {
+    if (expired >= sold * 0.5)
+      return 'Demand is weak and distress is beginning to rise. Expired listings are climbing relative to sales — this ZIP is entering an opportunity phase. Begin light outreach and monitor weekly.';
+    return 'Demand is soft and early distress signals are appearing. This ZIP is transitioning — not yet a full attack zone but worth starting light outreach before competition arrives.';
   }
-  if (demandRatio >= 0.4 && domAvg <= 45)
-    return 'Moderate demand and average days on market suggest a balanced ZIP worth watching for emerging opportunity.';
+  if (status === 'Slow') {
+    return 'Market is slow but distress has not materialized. Sellers are not yet motivated — hold marketing spend and revisit in 2–3 weeks. Watch for rising expired listings as an entry signal.';
+  }
+  // Stable
+  if (demandRatio >= 0.35 && domAvg <= 40)
+    return 'Balanced demand and moderate days on market indicate a stable ZIP. Limited investor opportunity at current conditions — keep monitoring.';
   if (expired > 3)
-    return 'Mixed signals — moderate demand but rising expired listings. Watch closely before committing mail budget.';
-  return 'Balanced market conditions this week. Continue monitoring pending and expired counts for a clearer direction.';
+    return 'Mixed signals — moderate demand but expired listings are ticking up. A potential early distress signal. Watch closely for the trend to confirm direction.';
+  return 'Market conditions are balanced this week. Continue tracking pending and expired counts for a clearer directional signal before committing resources.';
+}
+
+// ── STATUS / ACTION BADGE HELPERS ───────────────────────
+function statusClass(s) {
+  if (s === 'Hot')            return 'mkt-hot';
+  if (s === 'Stable')         return 'mkt-stable';
+  if (s === 'Early Distress') return 'mkt-early-distress';
+  if (s === 'Distress')       return 'mkt-distress';
+  return 'mkt-slow'; // Slow
+}
+function actionClass(a) {
+  if (a === 'Watch / Retail')      return 'action-watch-retail';
+  if (a === 'Watch')               return 'action-watch';
+  if (a === 'Watch / Light Attack')return 'action-watch-light';
+  if (a === 'ATTACK')              return 'action-attack';
+  return 'action-avoid';
+}
+// Inline color for ranking table (status)
+function statusStyle(s) {
+  if (s === 'Hot')            return 'background:#D4EDDA;color:#155724';
+  if (s === 'Stable')         return 'background:#D1ECF1;color:#0c5460';
+  if (s === 'Early Distress') return 'background:#FFF3CD;color:#7a4f0a';
+  if (s === 'Distress')       return 'background:#1a1a1a;color:#fff';
+  return 'background:#e8e8e8;color:#555'; // Slow
+}
+// Inline color for ranking table (action)
+function actionStyle(a) {
+  if (a === 'Watch / Retail')       return 'background:#D4EDDA;color:#155724';
+  if (a === 'Watch')                return 'background:#D1ECF1;color:#0c5460';
+  if (a === 'Watch / Light Attack') return 'background:#FFF3CD;color:#7a4f0a';
+  if (a === 'ATTACK')               return 'background:#1a1a1a;color:#fff';
+  return 'background:#e8e8e8;color:#777'; // Avoid
 }
 
 function autoCalc() {
@@ -570,11 +627,11 @@ function autoCalc() {
 
     const statusBadge = document.getElementById('mkt-status-badge');
     statusBadge.textContent = c.status;
-    statusBadge.className = 'mkt-badge ' + (c.status==='Hot'?'mkt-hot':c.status==='Neutral'?'mkt-neutral':'mkt-slow');
+    statusBadge.className = 'mkt-badge ' + statusClass(c.status);
 
     const actionBadge = document.getElementById('mkt-action-badge');
     actionBadge.textContent = c.action;
-    actionBadge.className = 'mkt-badge ' + (c.action==='Attack'?'action-attack':c.action==='Watch'?'action-watch':'action-avoid');
+    actionBadge.className = 'mkt-badge ' + actionClass(c.action);
 
     document.getElementById('mkt-summary').textContent = c.summary;
   }
@@ -691,21 +748,6 @@ async function deleteZip() {
 }
 
 // ── SCORING ──────────────────────────────────────────────
-function investorScore(z) {
-  const l = z.history[z.history.length-1];
-  if (!l) return 0;
-  // Use stored weekly ZIP score if available, else fall back to old formula
-  if (l.zipScore !== undefined) return Math.round(parseFloat(l.zipScore) * 10);
-  let score = 0;
-  if (l.dropPct >= 4) score += 25; else if (l.dropPct >= 2) score += 15;
-  const demandRatio = l.pending / (l.active||1);
-  if (demandRatio >= 0.3) score += 20; else if (demandRatio >= 0.2) score += 12;
-  if (l.comp <= 6) score += 20; else if (l.comp <= 8) score += 10;
-  if (z.distress==='High') score += 20; else if (z.distress==='Moderate') score += 10;
-  if (l.dom <= 21) score += 15; else if (l.dom <= 35) score += 8;
-  return Math.min(score, 100);
-}
-
 function roleClass(role) {
   if (role==='High risk / high reward') return 'role-3';
   if (role==='Main focus') return 'role-1';
@@ -729,7 +771,7 @@ function renderDashboard() {
   grid.innerHTML = keys.map(k => {
     const z = db.zips[k];
     const l = z.history[z.history.length-1];
-    const score = investorScore(z);
+    const score = l && l.zipScore ? parseFloat(l.zipScore) : 0;
     const prev = z.history.length>1 ? z.history[z.history.length-2] : null;
     const domChange = l&&prev ? l.dom - prev.dom : null;
     const domCls = domChange===null?'':domChange<0?'down':domChange>0?'up':'';
@@ -745,8 +787,8 @@ function renderDashboard() {
         <div class="metric-mini"><div class="metric-mini-label">Price drop avg</div><div class="metric-mini-val warn">-${l.dropPct}%</div></div>
       </div>
       <div class="score-bar-wrap">
-        <div class="score-bar-label"><span>Weekly ZIP score</span><span>${l&&l.zipScore?l.zipScore+'/10':score+'/100'}</span></div>
-        <div class="score-bar-track"><div class="score-bar-fill" style="width:${score}%"></div></div>
+        <div class="score-bar-label"><span>Weekly ZIP score</span><span>${score}/10</span></div>
+        <div class="score-bar-track"><div class="score-bar-fill" style="width:${score*10}%"></div></div>
       </div>`:'<div style="color:#bbb;font-size:12px;margin-top:8px">No data yet — tap to update</div>'}
       <div class="zip-updated">${l?'Updated '+l.date:'—'} &nbsp;·&nbsp; ${l&&l.status?l.status+' · '+l.action:z.history.length+' week'+(z.history.length!==1?'s':'')+' of data'}</div>
     </div>`;
@@ -760,7 +802,7 @@ function renderRanking() {
     document.getElementById('strat-bars').innerHTML='';
     return;
   }
-  const sorted = keys.map(k=>({k,z:db.zips[k],score:investorScore(db.zips[k])})).sort((a,b)=>b.score-a.score);
+  const sorted = keys.map(k=>{ const z=db.zips[k]; const l=z.history[z.history.length-1]; const sc=l&&l.zipScore?parseFloat(l.zipScore):0; return {k,z,score:sc}; }).sort((a,b)=>b.score-a.score);
   const medals=['🥇','🥈','🥉','4️⃣','5️⃣','6️⃣','7️⃣','8️⃣','9️⃣'];
   document.getElementById('rank-table').innerHTML=`
     <thead><tr><th>Rank</th><th>Zip</th><th>Role</th><th>Distress</th><th>ZIP Score</th><th>Status</th><th>Action</th><th>DOM</th><th>Sold (7d)</th><th>Expired (7d)</th></tr></thead>
@@ -771,9 +813,9 @@ function renderRanking() {
         <td class="rank-zip">${item.k}</td>
         <td><span class="zip-role ${roleClass(item.z.role)}" style="font-size:11px">${item.z.role}</span></td>
         <td>${distressBadge(item.z.distress)}</td>
-        <td class="rank-score">${l&&l.zipScore?l.zipScore:item.score}</td>
-        <td>${l&&l.status?`<span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:12px;background:${l.status==='Hot'?'#D4EDDA':l.status==='Neutral'?'#FFF3CD':'#F8D7DA'};color:${l.status==='Hot'?'#155724':l.status==='Neutral'?'#856404':'#721c24'}">${l.status}</span>`:'—'}</td>
-        <td>${l&&l.action?`<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:12px;background:${l.action==='Attack'?'#1a1a1a':l.action==='Watch'?'#FFF3CD':'#F8D7DA'};color:${l.action==='Attack'?'#fff':l.action==='Watch'?'#856404':'#721c24'}">${l.action}</span>`:'—'}</td>
+        <td class="rank-score">${item.score.toFixed(1)}</td>
+        <td>${l&&l.status?`<span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:12px;${statusStyle(l.status)}">${l.status}</span>`:'—'}</td>
+        <td>${l&&l.action?`<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:12px;${actionStyle(l.action)}">${l.action}</span>`:'—'}</td>
         <td>${l?l.dom+'d':'—'}</td>
         <td>${l?l.sold||0:'—'}</td>
         <td>${l?(l.expired||0):'—'}</td>
@@ -796,7 +838,7 @@ function renderDetail(zipKey) {
   if (!z) { showPage('dashboard'); return; }
   const l = z.history[z.history.length-1];
   const prev = z.history.length>1 ? z.history[z.history.length-2] : null;
-  const score = investorScore(z);
+  const score = l && l.zipScore ? parseFloat(l.zipScore) : 0;
   const works  = (z.works||'').split(',').map(s=>s.trim()).filter(Boolean);
   const doesnt = (z.doesnt||'').split(',').map(s=>s.trim()).filter(Boolean);
   const histRows = [...z.history].reverse().map((h,i) => `
@@ -817,8 +859,10 @@ function renderDetail(zipKey) {
         <div class="detail-role">${z.role} &nbsp;·&nbsp; ${distressBadge(z.distress)}</div>
       </div>
       <div style="text-align:right">
-        <div style="font-size:28px;font-weight:700">${score}<span style="font-size:14px;color:#888">/100</span></div>
-        <div style="font-size:11px;color:#888">Investor score</div>
+        <div style="font-size:28px;font-weight:700">${score}<span style="font-size:14px;color:#888">/10</span></div>
+        <div style="font-size:11px;color:#888;margin-bottom:4px">Weekly ZIP score</div>
+        ${l&&l.status?`<span class="mkt-badge ${statusClass(l.status)}" style="font-size:10px">${l.status}</span>`:'' }
+        ${l&&l.action?`<span class="mkt-badge ${actionClass(l.action)}" style="font-size:10px;margin-top:4px;display:inline-block">${l.action}</span>`:''}
       </div>
     </div>
     ${l?`<div class="metrics-grid">
@@ -841,8 +885,8 @@ function renderDetail(zipKey) {
       <h3>📊 Weekly Market Read</h3>
       <div class="market-read-top">
         <div><div class="mkt-score">${l.zipScore} / 10</div><div class="mkt-score-label">Weekly ZIP score</div></div>
-        <span class="mkt-badge ${l.status==='Hot'?'mkt-hot':l.status==='Neutral'?'mkt-neutral':'mkt-slow'}">${l.status||'—'}</span>
-        <span class="mkt-badge ${l.action==='Attack'?'action-attack':l.action==='Watch'?'action-watch':'action-avoid'}">${l.action||'—'}</span>
+        <span class="mkt-badge ${statusClass(l.status)}">${l.status||'—'}</span>
+        <span class="mkt-badge ${actionClass(l.action)}">${l.action||'—'}</span>
       </div>
       <div class="mkt-summary">${l.summary||''}</div>
     </div>`:''}
@@ -873,44 +917,9 @@ async function saveNotes(zipKey) {
   setTimeout(() => btn.textContent = 'Save notes', 1500);
 }
 
-// ── SEED DEMO DATA ───────────────────────────────────────
-const PRELOADED = [
-  {zip:'40214',role:'Main focus',works:'Distressed deals, moderate rehabs, safer flips',doesnt:'Expecting fast flips, going too cheap, ignoring comps',notes:'Sleeper zip. Less competition than 40216, more distress. Best balance.',data:{active:112,pending:34,sold:9,expired:18,dom:28,domAvg:43,fast:61,lsr:99,dropAmt:13087,listPrice:264000,lowSale:75000}},
-  {zip:'40216',role:'High risk / high reward',works:'Aggressive hunting, high upside',doesnt:'Faint of heart, thin margins',notes:'Highest profit, highest risk. 46 pending. Very competitive.',data:{active:130,pending:46,sold:12,expired:8,dom:22,domAvg:35,fast:68,lsr:100,dropAmt:10000,listPrice:248000,lowSale:60000}},
-  {zip:'40258',role:'Backup deals',works:'Cherry-pick only, selective deals',doesnt:'Volume plays, aggressive bidding',notes:'Selective market. Only move on standout deals.',data:{active:90,pending:28,sold:7,expired:12,dom:35,domAvg:48,fast:50,lsr:98,dropAmt:8500,listPrice:266000,lowSale:90000}},
-  {zip:'40272',role:'Clean flips',works:'Clean flips, fast sales, predictable',doesnt:'High-margin expectations, distressed plays',notes:'Tight margins but fast. Low risk, low reward.',data:{active:85,pending:40,sold:11,expired:4,dom:18,domAvg:24,fast:75,lsr:101,dropAmt:5000,listPrice:262000,lowSale:110000}},
-];
-
-function seedDemo() {
-  if (Object.keys(db.zips).length > 0) return;
-  PRELOADED.forEach(p => {
-    const calc = calcWeeklyScore({
-      active: p.data.active, pending: p.data.pending, sold: p.data.sold,
-      expired: p.data.expired||0, domAvg: p.data.domAvg, fast: p.data.fast,
-      lsr: p.data.lsr, dropAmt: p.data.dropAmt, listPrice: p.data.listPrice||0
-    });
-    db.zips[p.zip] = { history:[], role:p.role, distress:calc.distress, works:p.works, doesnt:p.doesnt, notes:p.notes };
-    db.zips[p.zip].history.push({
-      date: new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}),
-      isoDate: new Date().toISOString().split('T')[0],
-      ...p.data,
-      dropPct: parseFloat(calc.dropPct),
-      demand:  parseFloat(calc.demandRatio),
-      comp:    calc.comp,
-      zipScore: calc.zipScore,
-      status:  calc.status,
-      action:  calc.action,
-      distress: calc.distress,
-      summary: calc.summary,
-    });
-  });
-  saveLocal();
-}
-
 // ── INIT ────────────────────────────────────────────────
 async function init() {
   loadLocal();
-  seedDemo();
   renderDashboard();
   const { url, key } = getSbCreds();
   if (url && key) {
