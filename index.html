@@ -19,12 +19,18 @@ header span{font-size:12px;color:#aaa}
 .page{display:none;padding:1rem}
 .page.active{display:block}
 
+/* Search bar */
+.search-wrap{margin-bottom:12px}
+.search-input{width:100%;padding:10px 14px;border:1px solid #e0e0e0;border-radius:10px;font-size:13px;font-family:inherit;color:#1a1a1a;background:#fff;outline:none}
+.search-input:focus{border-color:#888}
+
 /* Dashboard */
 .zip-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;margin-bottom:1.5rem}
 .zip-card{background:#fff;border-radius:12px;border:1px solid #e0e0e0;padding:1.25rem;cursor:pointer;transition:border-color 0.15s}
 .zip-card:hover{border-color:#888}
 .zip-card-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px}
 .zip-num{font-size:22px;font-weight:700;color:#1a1a1a}
+.zip-neighborhood{font-size:12px;color:#666;margin-top:2px;font-weight:500}
 .zip-role{font-size:11px;padding:3px 10px;border-radius:20px;font-weight:600}
 .role-1{background:#FFF3CD;color:#856404}
 .role-2{background:#D1ECF1;color:#0c5460}
@@ -51,6 +57,7 @@ header span{font-size:12px;color:#aaa}
 .rank-table tr:last-child td{border-bottom:none}
 .rank-medal{font-size:18px;width:28px}
 .rank-zip{font-size:15px;font-weight:700}
+.rank-neighborhood{font-size:12px;color:#666}
 .rank-score{font-size:18px;font-weight:700}
 .strategy-box{background:#fff;border-radius:12px;border:1px solid #e0e0e0;padding:1.25rem;margin-top:12px}
 .strategy-box h3{font-size:13px;font-weight:600;margin-bottom:10px;color:#1a1a1a}
@@ -65,7 +72,8 @@ header span{font-size:12px;color:#aaa}
 .back-btn:hover{color:#1a1a1a}
 .detail-header{background:#fff;border-radius:12px;border:1px solid #e0e0e0;padding:1.25rem;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}
 .detail-zip{font-size:28px;font-weight:700}
-.detail-role{font-size:13px;color:#888}
+.detail-neighborhood{font-size:14px;color:#666;margin-top:2px;font-weight:500}
+.detail-role{font-size:13px;color:#888;margin-top:4px}
 .metrics-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-bottom:12px}
 .metric-card{background:#fff;border-radius:10px;border:1px solid #e0e0e0;padding:1rem}
 .metric-label{font-size:11px;color:#888;margin-bottom:4px}
@@ -173,6 +181,7 @@ header span{font-size:12px;color:#aaa}
   .sync-dropdown{right:0;left:0;width:100%}
   .rank-table{font-size:12px}
   .rank-table th,.rank-table td{padding:8px 10px}
+  .rank-table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
 }
 </style>
 </head>
@@ -214,12 +223,15 @@ header span{font-size:12px;color:#aaa}
 
 <!-- DASHBOARD -->
 <div class="page active" id="page-dashboard">
+  <div class="search-wrap">
+    <input type="text" id="dash-search" class="search-input" placeholder="Search by ZIP or neighborhood..." oninput="renderDashboard()">
+  </div>
   <div class="zip-grid" id="zip-grid"></div>
 </div>
 
 <!-- RANKING -->
 <div class="page" id="page-ranking">
-  <div style="margin-bottom:12px">
+  <div style="margin-bottom:12px" class="rank-table-wrap">
     <table class="rank-table" id="rank-table"></table>
   </div>
   <div class="strategy-box">
@@ -234,6 +246,7 @@ header span{font-size:12px;color:#aaa}
     <h3 id="form-title">Add new zip code</h3>
     <div class="form-grid">
       <div class="form-field"><label>Zip code</label><input type="text" id="f-zip" placeholder="e.g. 40214" maxlength="5"/></div>
+      <div class="form-field"><label>Neighborhood</label><input type="text" id="f-neighborhood" placeholder="Pleasure Ridge Park"/></div>
       <div class="form-field"><label>Role / strategy</label>
         <select id="f-role">
           <option value="Main focus">Main focus</option>
@@ -301,14 +314,40 @@ const SB_KEY_KEY = 'ziptracker_sb_key';
 const DB_KEY     = 'ziptracker_v2';
 let sbClient = null;
 let db = { zips: {} };
-let editingZip = null;
+let editingKey = null; // combined key: "zip|neighborhood"
+
+// ── KEY HELPERS ──────────────────────────────────────────
+function makeKey(zip, neighborhood) {
+  return (zip || '').trim() + '|' + (neighborhood || '').trim();
+}
+function parseKey(key) {
+  const idx = key.indexOf('|');
+  if (idx === -1) return { zip: key, neighborhood: '' };
+  return { zip: key.substring(0, idx), neighborhood: key.substring(idx + 1) };
+}
 
 // ── LOCAL STORAGE ────────────────────────────────────────
 function loadLocal() {
   try { db = JSON.parse(localStorage.getItem(DB_KEY) || '{"zips":{}}'); } catch(e) { db = { zips: {} }; }
+  // Migrate old records that don't have a neighborhood in their key
+  migrateLegacyKeys();
 }
 function saveLocal() {
   localStorage.setItem(DB_KEY, JSON.stringify(db));
+}
+function migrateLegacyKeys() {
+  const oldKeys = Object.keys(db.zips).filter(k => !k.includes('|'));
+  if (oldKeys.length === 0) return;
+  oldKeys.forEach(oldKey => {
+    const record = db.zips[oldKey];
+    const neighborhood = record.neighborhood || '';
+    const newKey = makeKey(oldKey, neighborhood);
+    if (!record.zip) record.zip = oldKey;
+    if (record.neighborhood === undefined) record.neighborhood = '';
+    db.zips[newKey] = record;
+    delete db.zips[oldKey];
+  });
+  saveLocal();
 }
 
 // ── SUPABASE INIT ────────────────────────────────────────
@@ -384,6 +423,10 @@ function disconnectSupabase() {
 }
 
 // ── SUPABASE CRUD ────────────────────────────────────────
+// NOTE: For full neighborhood support in Supabase, your `zip_tracker` table
+// should have a `neighborhood` column (text) and a composite unique constraint
+// on (zip, neighborhood) instead of just `zip`. The code below sends neighborhood
+// as its own field and uses the combined key for identity.
 async function loadFromSupabase() {
   if (!sbClient) return;
   const { data, error } = await sbClient.from('zip_tracker').select('*');
@@ -391,50 +434,82 @@ async function loadFromSupabase() {
   // Rebuild db from flat rows
   db = { zips: {} };
   (data || []).forEach(row => {
-    if (!db.zips[row.zip]) {
-      db.zips[row.zip] = {
+    const neighborhood = row.neighborhood || '';
+    const key = makeKey(row.zip, neighborhood);
+    if (!db.zips[key]) {
+      db.zips[key] = {
+        zip: row.zip,
+        neighborhood: neighborhood,
         role: row.role, distress: row.distress,
         works: row.works, doesnt: row.doesnt, notes: row.notes,
         history: []
       };
     }
     if (row.entry_data) {
-      db.zips[row.zip].history.push(row.entry_data);
+      db.zips[key].history.push(row.entry_data);
     }
     // Update meta from latest row
-    db.zips[row.zip].role     = row.role;
-    db.zips[row.zip].distress = row.distress;
-    db.zips[row.zip].works    = row.works;
-    db.zips[row.zip].doesnt   = row.doesnt;
-    db.zips[row.zip].notes    = row.notes;
+    db.zips[key].zip          = row.zip;
+    db.zips[key].neighborhood = neighborhood;
+    db.zips[key].role         = row.role;
+    db.zips[key].distress     = row.distress;
+    db.zips[key].works        = row.works;
+    db.zips[key].doesnt       = row.doesnt;
+    db.zips[key].notes        = row.notes;
   });
   saveLocal();
 }
 
-async function upsertToSupabase(zipKey) {
+async function upsertToSupabase(key) {
   if (!sbClient) return;
-  const z = db.zips[zipKey];
+  const z = db.zips[key];
   const latest = z.history[z.history.length - 1];
-  const { error } = await sbClient.from('zip_tracker').upsert({
-    zip: zipKey,
+  // Try upsert with composite conflict target first; fall back to zip-only if the
+  // table doesn't have the (zip,neighborhood) unique constraint yet.
+  const payload = {
+    zip: z.zip,
+    neighborhood: z.neighborhood || '',
     role: z.role, distress: z.distress,
     works: z.works, doesnt: z.doesnt, notes: z.notes,
     entry_data: latest,
     updated_at: new Date().toISOString()
-  }, { onConflict: 'zip' });
-  if (error) toast('Sync error: ' + error.message);
-  else setSyncStatus('connected');
+  };
+  let { error } = await sbClient.from('zip_tracker').upsert(payload, { onConflict: 'zip,neighborhood' });
+  if (error) {
+    // Fallback for older tables without neighborhood column / constraint
+    const fallback = { ...payload };
+    delete fallback.neighborhood;
+    const res = await sbClient.from('zip_tracker').upsert(fallback, { onConflict: 'zip' });
+    if (res.error) toast('Sync error: ' + res.error.message);
+    else setSyncStatus('connected');
+  } else {
+    setSyncStatus('connected');
+  }
 }
 
-async function deleteFromSupabase(zipKey) {
+async function deleteFromSupabase(key) {
   if (!sbClient) return;
-  const { error } = await sbClient.from('zip_tracker').delete().eq('zip', zipKey);
-  if (error) toast('Sync error: ' + error.message);
+  const { zip, neighborhood } = parseKey(key);
+  // Prefer composite match; fall back to zip-only if column missing.
+  let q = sbClient.from('zip_tracker').delete().eq('zip', zip);
+  if (neighborhood !== '') q = q.eq('neighborhood', neighborhood);
+  const { error } = await q;
+  if (error) {
+    const res = await sbClient.from('zip_tracker').delete().eq('zip', zip);
+    if (res.error) toast('Sync error: ' + res.error.message);
+  }
 }
 
-async function updateNotesInSupabase(zipKey) {
+async function updateNotesInSupabase(key) {
   if (!sbClient) return;
-  await sbClient.from('zip_tracker').update({ notes: db.zips[zipKey].notes }).eq('zip', zipKey);
+  const z = db.zips[key];
+  const { zip, neighborhood } = parseKey(key);
+  let q = sbClient.from('zip_tracker').update({ notes: z.notes }).eq('zip', zip);
+  if (neighborhood !== '') q = q.eq('neighborhood', neighborhood);
+  const { error } = await q;
+  if (error) {
+    await sbClient.from('zip_tracker').update({ notes: z.notes }).eq('zip', zip);
+  }
 }
 
 // ── TOAST ────────────────────────────────────────────────
@@ -448,7 +523,7 @@ function toast(msg) {
 // ── APP LOGIC ────────────────────────────────────────────
 document.getElementById('hdr-date').textContent = new Date().toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
 
-function showPage(name, zipKey) {
+function showPage(name, key) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.getElementById('page-'+name).classList.add('active');
@@ -456,7 +531,7 @@ function showPage(name, zipKey) {
   if (name==='dashboard') { document.querySelector('.tab').classList.add('active'); renderDashboard(); }
   if (name==='ranking')   { document.querySelectorAll('.tab')[1].classList.add('active'); renderRanking(); }
   if (name==='add')       { resetForm(); }
-  if (name==='detail' && zipKey) { renderDetail(zipKey); }
+  if (name==='detail' && key) { renderDetail(key); }
 }
 
 // ── WEEKLY SCORING ENGINE ────────────────────────────────
@@ -651,10 +726,10 @@ function autoCalc() {
 }
 
 function resetForm() {
-  editingZip = null;
+  editingKey = null;
   document.getElementById('form-title').textContent = 'Add new zip code';
   document.getElementById('delete-btn').style.display = 'none';
-  ['f-zip','f-active','f-pending','f-sold','f-expired','f-dom','f-dom-avg','f-fast','f-lsr',
+  ['f-zip','f-neighborhood','f-active','f-pending','f-sold','f-expired','f-dom','f-dom-avg','f-fast','f-lsr',
    'f-drop-amt','f-list-price','f-drop-pct','f-demand','f-comp','f-low-sale','f-works','f-doesnt','f-notes'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = '';
@@ -666,19 +741,25 @@ function resetForm() {
   const readEl = document.getElementById('weekly-market-read');
   if (readEl) readEl.style.display = 'none';
   document.getElementById('f-zip').disabled = false;
+  document.getElementById('f-neighborhood').disabled = false;
   document.getElementById('f-role').value = 'Main focus';
   document.getElementById('f-distress').value = 'Moderate';
   document.getElementById('f-date').value = new Date().toISOString().split('T')[0];
 }
 
-function editZip(zipKey) {
-  const z = db.zips[zipKey];
+function editZip(key) {
+  const z = db.zips[key];
+  if (!z) return;
+  const { zip, neighborhood } = parseKey(key);
   const latest = z.history[z.history.length-1];
-  editingZip = zipKey;
-  document.getElementById('form-title').textContent = 'Edit / Update — ' + zipKey;
+  editingKey = key;
+  const titleLabel = neighborhood ? (zip + ' — ' + neighborhood) : zip;
+  document.getElementById('form-title').textContent = 'Edit / Update — ' + titleLabel;
   document.getElementById('delete-btn').style.display = 'inline-block';
-  document.getElementById('f-zip').value = zipKey;
+  document.getElementById('f-zip').value = zip;
+  document.getElementById('f-neighborhood').value = neighborhood;
   document.getElementById('f-zip').disabled = true;
+  document.getElementById('f-neighborhood').disabled = true;
   document.getElementById('f-role').value = z.role||'Main focus';
   document.getElementById('f-distress').value = z.distress||'Moderate';
   document.getElementById('f-works').value = z.works||'';
@@ -703,8 +784,10 @@ function editZip(zipKey) {
 }
 
 async function saveZip() {
-  const zipKey = (document.getElementById('f-zip').value||'').trim();
-  if (!zipKey) { alert('Enter a zip code'); return; }
+  const zip = (document.getElementById('f-zip').value||'').trim();
+  const neighborhood = (document.getElementById('f-neighborhood').value||'').trim();
+  if (!zip) { alert('Enter a zip code'); return; }
+  const key = makeKey(zip, neighborhood);
   const isoDate = document.getElementById('f-date').value || new Date().toISOString().split('T')[0];
   const dateLabel = new Date(isoDate + 'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
   const active    = parseFloat(document.getElementById('f-active').value)||0;
@@ -734,31 +817,37 @@ async function saveZip() {
     distress:     calc.distress,
     summary:      calc.summary,
   };
-  if (!db.zips[zipKey]) {
-    db.zips[zipKey] = { history:[], role:'', distress:'Moderate', works:'', doesnt:'', notes:'' };
+  if (!db.zips[key]) {
+    db.zips[key] = { zip, neighborhood, history:[], role:'', distress:'Moderate', works:'', doesnt:'', notes:'' };
   }
-  db.zips[zipKey].role     = document.getElementById('f-role').value;
-  db.zips[zipKey].distress = calc.distress;
-  db.zips[zipKey].works    = document.getElementById('f-works').value;
-  db.zips[zipKey].doesnt   = document.getElementById('f-doesnt').value;
-  db.zips[zipKey].notes    = document.getElementById('f-notes').value;
-  db.zips[zipKey].history.push(entry);
+  db.zips[key].zip          = zip;
+  db.zips[key].neighborhood = neighborhood;
+  db.zips[key].role     = document.getElementById('f-role').value;
+  db.zips[key].distress = calc.distress;
+  db.zips[key].works    = document.getElementById('f-works').value;
+  db.zips[key].doesnt   = document.getElementById('f-doesnt').value;
+  db.zips[key].notes    = document.getElementById('f-notes').value;
+  db.zips[key].history.push(entry);
   document.getElementById('f-zip').disabled = false;
+  document.getElementById('f-neighborhood').disabled = false;
   saveLocal();
   setSyncStatus('syncing');
-  await upsertToSupabase(zipKey);
-  toast('Zip saved!');
+  await upsertToSupabase(key);
+  toast('Saved!');
   showPage('dashboard');
 }
 
 async function deleteZip() {
-  if (!editingZip) return;
-  if (!confirm('Delete ' + editingZip + '? This cannot be undone.')) return;
-  delete db.zips[editingZip];
+  if (!editingKey) return;
+  const { zip, neighborhood } = parseKey(editingKey);
+  const label = neighborhood ? (zip + ' — ' + neighborhood) : zip;
+  if (!confirm('Delete ' + label + '? This cannot be undone.')) return;
+  delete db.zips[editingKey];
   document.getElementById('f-zip').disabled = false;
+  document.getElementById('f-neighborhood').disabled = false;
   saveLocal();
-  await deleteFromSupabase(editingZip);
-  toast(editingZip + ' deleted');
+  await deleteFromSupabase(editingKey);
+  toast(label + ' deleted');
   showPage('dashboard');
 }
 
@@ -775,25 +864,56 @@ function distressBadge(d) {
   return '<span class="badge-mod">Moderate</span>';
 }
 
+// Safe HTML escape for user input rendered in HTML (zip, neighborhood, etc.)
+function esc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
 // ── RENDER ───────────────────────────────────────────────
 function renderDashboard() {
   const grid = document.getElementById('zip-grid');
-  const keys = Object.keys(db.zips);
-  if (keys.length===0) {
+  const searchEl = document.getElementById('dash-search');
+  const query = (searchEl ? searchEl.value : '').trim().toLowerCase();
+  const allKeys = Object.keys(db.zips);
+
+  if (allKeys.length===0) {
     grid.innerHTML = '<div class="no-zips">No zip codes yet.<br>Tap + to add your first zip.</div>';
     return;
   }
+
+  const keys = query
+    ? allKeys.filter(k => {
+        const z = db.zips[k];
+        const zip = (z.zip || parseKey(k).zip || '').toLowerCase();
+        const nb  = (z.neighborhood || '').toLowerCase();
+        return zip.includes(query) || nb.includes(query);
+      })
+    : allKeys;
+
+  if (keys.length===0) {
+    grid.innerHTML = '<div class="no-zips">No matches for "' + esc(query) + '".</div>';
+    return;
+  }
+
   grid.innerHTML = keys.map(k => {
     const z = db.zips[k];
+    const zip = z.zip || parseKey(k).zip;
+    const neighborhood = z.neighborhood || '';
     const l = z.history[z.history.length-1];
     const score = l && l.zipScore ? parseFloat(l.zipScore) : 0;
     const prev = z.history.length>1 ? z.history[z.history.length-2] : null;
     const domChange = l&&prev ? l.dom - prev.dom : null;
     const domCls = domChange===null?'':domChange<0?'down':domChange>0?'up':'';
-    return `<div class="zip-card" onclick="showPage('detail','${k}')">
+    return `<div class="zip-card" onclick="showPage('detail','${esc(k).replace(/'/g,"\\'")}')">
       <div class="zip-card-top">
-        <div><div class="zip-num">${k}</div><div style="margin-top:4px">${distressBadge(z.distress)}</div></div>
-        <span class="zip-role ${roleClass(z.role)}">${z.role}</span>
+        <div>
+          <div class="zip-num">${esc(zip)}</div>
+          ${neighborhood?`<div class="zip-neighborhood">${esc(neighborhood)}</div>`:''}
+          <div style="margin-top:4px">${distressBadge(z.distress)}</div>
+        </div>
+        <span class="zip-role ${roleClass(z.role)}">${esc(z.role)}</span>
       </div>
       ${l?`<div class="zip-metrics">
         <div class="metric-mini"><div class="metric-mini-label">Pending</div><div class="metric-mini-val">${l.pending}</div></div>
@@ -817,16 +937,23 @@ function renderRanking() {
     document.getElementById('strat-bars').innerHTML='';
     return;
   }
-  const sorted = keys.map(k=>{ const z=db.zips[k]; const l=z.history[z.history.length-1]; const ps=l&&l.pressureScore?parseFloat(l.pressureScore):0; const zs=l&&l.zipScore?parseFloat(l.zipScore):0; return {k,z,pressureScore:ps,score:zs}; }).sort((a,b)=>b.pressureScore-a.pressureScore||b.score-a.score);
+  const sorted = keys.map(k=>{
+    const z=db.zips[k];
+    const l=z.history[z.history.length-1];
+    const ps=l&&l.pressureScore?parseFloat(l.pressureScore):0;
+    const zs=l&&l.zipScore?parseFloat(l.zipScore):0;
+    return {k, z, zip: z.zip || parseKey(k).zip, neighborhood: z.neighborhood || '', pressureScore:ps, score:zs};
+  }).sort((a,b)=>b.pressureScore-a.pressureScore||b.score-a.score);
   const medals=['🥇','🥈','🥉','4️⃣','5️⃣','6️⃣','7️⃣','8️⃣','9️⃣'];
   document.getElementById('rank-table').innerHTML=`
-    <thead><tr><th>Rank</th><th>Zip</th><th>Role</th><th>Pressure</th><th>ZIP Score</th><th>Status</th><th>Action</th><th>DOM</th><th>Sold (7d)</th><th>Expired (7d)</th></tr></thead>
+    <thead><tr><th>Rank</th><th>Zip</th><th>Neighborhood</th><th>Role</th><th>Pressure</th><th>ZIP Score</th><th>Status</th><th>Action</th><th>DOM</th><th>Sold (7d)</th><th>Expired (7d)</th></tr></thead>
     <tbody>${sorted.map((item,i)=>{
       const l = item.z.history[item.z.history.length-1];
       return `<tr>
         <td class="rank-medal">${medals[i]||i+1}</td>
-        <td class="rank-zip">${item.k}</td>
-        <td><span class="zip-role ${roleClass(item.z.role)}" style="font-size:11px">${item.z.role}</span></td>
+        <td class="rank-zip">${esc(item.zip)}</td>
+        <td class="rank-neighborhood">${item.neighborhood?esc(item.neighborhood):'<span style="color:#bbb">—</span>'}</td>
+        <td><span class="zip-role ${roleClass(item.z.role)}" style="font-size:11px">${esc(item.z.role)}</span></td>
         <td class="rank-score" style="font-size:14px">${item.pressureScore.toFixed(1)}<span style="font-size:10px;color:#888;font-weight:400">/10</span></td>
         <td style="font-size:13px;color:#888">${item.score.toFixed(1)}</td>
         <td>${l&&l.status?`<span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:12px;${statusStyle(l.status)}">${l.status}</span>`:'—'}</td>
@@ -840,17 +967,20 @@ function renderRanking() {
   const colors=['#1a1a1a','#555','#888','#aaa','#ccc'];
   document.getElementById('strat-bars').innerHTML=sorted.map((item,i)=>{
     const pct = Math.round((item.pressureScore/total)*100);
+    const label = item.neighborhood ? (item.zip + ' · ' + item.neighborhood) : item.zip;
     return `<div class="strat-row">
-      <div class="strat-zip" style="font-weight:700">${item.k}</div>
+      <div class="strat-zip" style="font-weight:700;min-width:auto;flex:0 0 auto;max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(label)}">${esc(label)}</div>
       <div class="strat-bar-track"><div class="strat-bar-fill" style="width:${pct}%;background:${colors[Math.min(i,4)]}"></div></div>
       <div class="strat-pct">${pct}%</div>
     </div>`;
   }).join('');
 }
 
-function renderDetail(zipKey) {
-  const z = db.zips[zipKey];
+function renderDetail(key) {
+  const z = db.zips[key];
   if (!z) { showPage('dashboard'); return; }
+  const zip = z.zip || parseKey(key).zip;
+  const neighborhood = z.neighborhood || '';
   const l = z.history[z.history.length-1];
   const prev = z.history.length>1 ? z.history[z.history.length-2] : null;
   const score = l && l.zipScore ? parseFloat(l.zipScore) : 0;
@@ -867,11 +997,14 @@ function renderDetail(zipKey) {
       ${i===0?'<span style="font-size:10px;color:#1e8449;font-weight:600">Latest</span>':''}
     </div>`).join('');
 
+  const safeKey = esc(key).replace(/'/g,"\\'");
+
   document.getElementById('detail-content').innerHTML=`
     <div class="detail-header">
       <div>
-        <div class="detail-zip">${zipKey}</div>
-        <div class="detail-role">${z.role} &nbsp;·&nbsp; ${distressBadge(z.distress)}</div>
+        <div class="detail-zip">${esc(zip)}</div>
+        ${neighborhood?`<div class="detail-neighborhood">${esc(neighborhood)}</div>`:''}
+        <div class="detail-role">${esc(z.role)} &nbsp;·&nbsp; ${distressBadge(z.distress)}</div>
       </div>
       <div style="text-align:right">
         <div style="font-size:28px;font-weight:700">${score}<span style="font-size:14px;color:#888">/10</span></div>
@@ -910,24 +1043,24 @@ function renderDetail(zipKey) {
       💡 Tap <strong>Update this week's numbers</strong> to log new MLS data and refresh your weekly read.
     </div>
     <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
-      <button class="btn-primary" onclick="editZip('${zipKey}')">Update this week's numbers</button>
+      <button class="btn-primary" onclick="editZip('${safeKey}')">Update this week's numbers</button>
     </div>
     ${works.length||doesnt.length?`<div class="section-card"><h3>Investor strategy</h3><div class="works-grid">
-      ${works.length?`<div class="works-box green"><h4 class="green">What works</h4>${works.map(w=>`<div class="works-item">✓ ${w}</div>`).join('')}</div>`:''}
-      ${doesnt.length?`<div class="works-box red"><h4 class="red">What doesn't</h4>${doesnt.map(w=>`<div class="works-item">✗ ${w}</div>`).join('')}</div>`:''}
+      ${works.length?`<div class="works-box green"><h4 class="green">What works</h4>${works.map(w=>`<div class="works-item">✓ ${esc(w)}</div>`).join('')}</div>`:''}
+      ${doesnt.length?`<div class="works-box red"><h4 class="red">What doesn't</h4>${doesnt.map(w=>`<div class="works-item">✗ ${esc(w)}</div>`).join('')}</div>`:''}
     </div></div>`:''}
     ${z.history.length>0?`<div class="section-card"><h3>Weekly history (${z.history.length} updates)</h3>${histRows}</div>`:''}
     <div class="section-card">
       <h3>Notes</h3>
-      <textarea class="notes-area" id="notes-ta">${z.notes||''}</textarea>
-      <button class="save-notes-btn" onclick="saveNotes('${zipKey}')">Save notes</button>
+      <textarea class="notes-area" id="notes-ta">${esc(z.notes||'')}</textarea>
+      <button class="save-notes-btn" onclick="saveNotes('${safeKey}')">Save notes</button>
     </div>`;
 }
 
-async function saveNotes(zipKey) {
-  db.zips[zipKey].notes = document.getElementById('notes-ta').value;
+async function saveNotes(key) {
+  db.zips[key].notes = document.getElementById('notes-ta').value;
   saveLocal();
-  await updateNotesInSupabase(zipKey);
+  await updateNotesInSupabase(key);
   const btn = document.querySelector('.save-notes-btn');
   btn.textContent = 'Saved!';
   setTimeout(() => btn.textContent = 'Save notes', 1500);
