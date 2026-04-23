@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Weekly ZIP Market Tracker</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f4f4f4;color:#1a1a1a;padding:0}
@@ -121,6 +122,8 @@ header span{font-size:12px;color:#aaa}
 .btn-secondary:hover{background:#f5f5f5}
 .btn-danger{background:#fff;color:#c0392b;border:1px solid #f5c6cb;border-radius:8px;padding:8px 18px;font-size:13px;cursor:pointer;font-family:inherit}
 .btn-danger:hover{background:#FFF5F5}
+.btn-pdf{background:#fff;color:#1a1a1a;border:1px solid #1a1a1a;border-radius:8px;padding:8px 18px;font-size:13px;cursor:pointer;font-family:inherit;font-weight:500}
+.btn-pdf:hover{background:#1a1a1a;color:#fff}
 .badge-distress{font-size:10px;padding:2px 7px;border-radius:20px;font-weight:600;background:#F8D7DA;color:#721c24}
 .badge-low{font-size:10px;padding:2px 7px;border-radius:20px;font-weight:600;background:#D4EDDA;color:#155724}
 .badge-mod{font-size:10px;padding:2px 7px;border-radius:20px;font-weight:600;background:#FFF3CD;color:#856404}
@@ -293,6 +296,7 @@ header span{font-size:12px;color:#aaa}
     </div>
     <div class="form-actions">
       <button class="btn-primary" onclick="saveZip()">Save zip code</button>
+      <button class="btn-pdf" id="pdf-btn" style="display:none" onclick="downloadCurrentZipPDF()">📄 Download Current ZIP PDF</button>
       <button class="btn-secondary" onclick="showPage('dashboard')">Cancel</button>
       <button class="btn-danger" id="delete-btn" style="display:none" onclick="deleteZip()">Delete zip</button>
     </div>
@@ -329,7 +333,6 @@ function parseKey(key) {
 // ── LOCAL STORAGE ────────────────────────────────────────
 function loadLocal() {
   try { db = JSON.parse(localStorage.getItem(DB_KEY) || '{"zips":{}}'); } catch(e) { db = { zips: {} }; }
-  // Migrate old records that don't have a neighborhood in their key
   migrateLegacyKeys();
 }
 function saveLocal() {
@@ -423,15 +426,10 @@ function disconnectSupabase() {
 }
 
 // ── SUPABASE CRUD ────────────────────────────────────────
-// NOTE: For full neighborhood support in Supabase, your `zip_tracker` table
-// should have a `neighborhood` column (text) and a composite unique constraint
-// on (zip, neighborhood) instead of just `zip`. The code below sends neighborhood
-// as its own field and uses the combined key for identity.
 async function loadFromSupabase() {
   if (!sbClient) return;
   const { data, error } = await sbClient.from('zip_tracker').select('*');
   if (error) { toast('Sync error: ' + error.message); return; }
-  // Rebuild db from flat rows
   db = { zips: {} };
   (data || []).forEach(row => {
     const neighborhood = row.neighborhood || '';
@@ -448,7 +446,6 @@ async function loadFromSupabase() {
     if (row.entry_data) {
       db.zips[key].history.push(row.entry_data);
     }
-    // Update meta from latest row
     db.zips[key].zip          = row.zip;
     db.zips[key].neighborhood = neighborhood;
     db.zips[key].role         = row.role;
@@ -464,8 +461,6 @@ async function upsertToSupabase(key) {
   if (!sbClient) return;
   const z = db.zips[key];
   const latest = z.history[z.history.length - 1];
-  // Try upsert with composite conflict target first; fall back to zip-only if the
-  // table doesn't have the (zip,neighborhood) unique constraint yet.
   const payload = {
     zip: z.zip,
     neighborhood: z.neighborhood || '',
@@ -476,7 +471,6 @@ async function upsertToSupabase(key) {
   };
   let { error } = await sbClient.from('zip_tracker').upsert(payload, { onConflict: 'zip,neighborhood' });
   if (error) {
-    // Fallback for older tables without neighborhood column / constraint
     const fallback = { ...payload };
     delete fallback.neighborhood;
     const res = await sbClient.from('zip_tracker').upsert(fallback, { onConflict: 'zip' });
@@ -490,7 +484,6 @@ async function upsertToSupabase(key) {
 async function deleteFromSupabase(key) {
   if (!sbClient) return;
   const { zip, neighborhood } = parseKey(key);
-  // Prefer composite match; fall back to zip-only if column missing.
   let q = sbClient.from('zip_tracker').delete().eq('zip', zip);
   if (neighborhood !== '') q = q.eq('neighborhood', neighborhood);
   const { error } = await q;
@@ -536,12 +529,10 @@ function showPage(name, key) {
 
 // ── WEEKLY SCORING ENGINE ────────────────────────────────
 function calcWeeklyScore({ active, pending, sold, expired, domAvg, fast, lsr, dropAmt, listPrice }) {
-  // ── Core ratios ─────────────────────────────────────
   const demandRatio = active > 0 ? pending / active : 0;
   const dropPct     = listPrice > 0 ? (dropAmt / listPrice) * 100 : 0;
   const expiredRate = active > 0 ? expired / active : 0;
 
-  // A. WEEKLY ZIP SCORE — market strength / quality (not opportunity)
   const demandScore   = Math.min(2.5, demandRatio * 2.5);
   const velocityScore = Math.min(2,   (sold / 10) * 2);
   const domScore      = domAvg > 0 ? Math.max(0, 2 - (domAvg / 45)) : 1;
@@ -550,28 +541,21 @@ function calcWeeklyScore({ active, pending, sold, expired, domAvg, fast, lsr, dr
   const strengthRaw   = demandScore + velocityScore + domScore + speed30Score + ltsScore;
   const zipScore      = Math.max(0, Math.min(10, strengthRaw));
 
-  // B. PRESSURE SCORE — investor opportunity / seller stress (primary ranking driver)
-  // B1. Inventory pressure
   const inventoryRatio    = (active > 0 && sold > 0) ? active / sold : active > 0 ? 5 : 0;
   const inventoryPressure = inventoryRatio >= 15 ? 3 : inventoryRatio >= 10 ? 2 : inventoryRatio >= 6 ? 1 : 0;
 
-  // B2. Demand weakness
   const demandWeakness = demandRatio < 0.10 ? 3 : demandRatio < 0.20 ? 2 : demandRatio < 0.30 ? 1 : 0;
 
-  // B3. Failed-listing pressure
   const expiredVsSold  = (expired > 0 && sold > 0 && expired >= sold)      ? 3
                        : (expired > 0 && sold > 0 && expired >= sold * 0.7) ? 2
                        : (expired > 0 && sold > 0 && expired >= sold * 0.4) ? 1 : 0;
   const expiredCount   = expired >= 10 ? 2 : expired >= 5 ? 1 : 0;
   const failedPressure = expiredVsSold + expiredCount;
 
-  // B4. Time pressure
   const domPressure = domAvg > 75 ? 3 : domAvg > 50 ? 2 : domAvg > 35 ? 1 : 0;
 
-  // B5. Price-cut pressure
   const pricePressure = dropPct > 5 ? 2 : dropPct > 3 ? 1 : 0;
 
-  // B6. Balance correction — prevents healthy balanced markets from reading as distress
   const balanceCredit = (demandRatio >= 0.25 && expired <= sold * 0.3 && domAvg <= 40) ? -3
                       : (demandRatio >= 0.20 && expired <= sold * 0.5)                  ? -1 : 0;
 
@@ -581,14 +565,11 @@ function calcWeeklyScore({ active, pending, sold, expired, domAvg, fast, lsr, dr
                       : pressureScore >= 5 ? 'High'
                       : pressureScore >= 3 ? 'Moderate' : 'Low';
 
-  // C. DISTRESS LEVEL — from failed-listing + DOM + price signals only
   const distressRaw = failedPressure + domPressure + pricePressure;
   const distress    = distressRaw >= 6 ? 'High'
                     : distressRaw >= 3 ? 'Moderate'
                     : distressRaw >= 1 ? 'Low' : 'None';
 
-  // D. MARKET STATUS — uses both scores + balance guard
-  //    Fix: balanced markets cannot trigger Distress or Attack
   let status;
   if (zipScore >= 6.5) {
     status = 'Hot';
@@ -602,7 +583,6 @@ function calcWeeklyScore({ active, pending, sold, expired, domAvg, fast, lsr, dr
     status = 'Slow';
   }
 
-  // E. RECOMMENDED ACTION
   let action;
   if      (status === 'Hot')            action = 'Watch / Retail';
   else if (status === 'Stable')         action = 'Watch';
@@ -610,7 +590,6 @@ function calcWeeklyScore({ active, pending, sold, expired, domAvg, fast, lsr, dr
   else if (status === 'Distress')       action = 'ATTACK';
   else                                  action = 'Avoid';
 
-  // F. COMPETITION SCORE
   const compRaw = (demandRatio * 3) + (fast / 20) + (lsr >= 100 ? 1 : 0) - (dropPct * 0.3);
   const comp    = Math.max(1, Math.min(10, Math.round(compRaw + 3)));
 
@@ -640,7 +619,6 @@ function generateWeeklySummary({ status, distress, pressureLevel, demandRatio, s
   if (status === 'Slow') {
     return 'Weak activity is present, but seller pressure is still too low. Sellers are not yet motivated — hold marketing until pressure builds and expired listings start rising.';
   }
-  // Stable
   if (demandRatio >= 0.30 && domAvg <= 35)
     return 'Balanced activity with limited seller pressure. Good for normal deals, not aggressive investor targeting.';
   if (expired > 0 && sold > 0 && expired >= sold * 0.3)
@@ -654,7 +632,7 @@ function statusClass(s) {
   if (s === 'Stable')         return 'mkt-stable';
   if (s === 'Early Distress') return 'mkt-early-distress';
   if (s === 'Distress')       return 'mkt-distress';
-  return 'mkt-slow'; // Slow
+  return 'mkt-slow';
 }
 function actionClass(a) {
   if (a === 'Watch / Retail')      return 'action-watch-retail';
@@ -663,21 +641,19 @@ function actionClass(a) {
   if (a === 'ATTACK')              return 'action-attack';
   return 'action-avoid';
 }
-// Inline color for ranking table (status)
 function statusStyle(s) {
   if (s === 'Hot')            return 'background:#D4EDDA;color:#155724';
   if (s === 'Stable')         return 'background:#D1ECF1;color:#0c5460';
   if (s === 'Early Distress') return 'background:#FFF3CD;color:#7a4f0a';
   if (s === 'Distress')       return 'background:#1a1a1a;color:#fff';
-  return 'background:#e8e8e8;color:#555'; // Slow
+  return 'background:#e8e8e8;color:#555';
 }
-// Inline color for ranking table (action)
 function actionStyle(a) {
   if (a === 'Watch / Retail')       return 'background:#D4EDDA;color:#155724';
   if (a === 'Watch')                return 'background:#D1ECF1;color:#0c5460';
   if (a === 'Watch / Light Attack') return 'background:#FFF3CD;color:#7a4f0a';
   if (a === 'ATTACK')               return 'background:#1a1a1a;color:#fff';
-  return 'background:#e8e8e8;color:#777'; // Avoid
+  return 'background:#e8e8e8;color:#777';
 }
 
 function autoCalc() {
@@ -693,19 +669,16 @@ function autoCalc() {
 
   const c = calcWeeklyScore({ active, pending, sold, expired, domAvg, fast, lsr, dropAmt, listPrice });
 
-  // Update hidden inputs (used in save)
   document.getElementById('f-demand').value   = c.demandRatio.toFixed(2);
   document.getElementById('f-drop-pct').value = c.dropPct.toFixed(2);
   document.getElementById('f-comp').value     = c.comp;
   document.getElementById('f-distress').value = c.distress;
 
-  // Update display fields
   document.getElementById('f-demand-disp').textContent   = c.demandRatio.toFixed(2);
   document.getElementById('f-drop-pct-disp').textContent = c.dropPct.toFixed(1) + '%';
   document.getElementById('f-comp-disp').textContent     = c.comp + ' / 10';
   document.getElementById('f-distress-disp').textContent = c.distress;
 
-  // Show weekly market read if any data entered
   const hasData = active > 0 || pending > 0 || sold > 0;
   const readEl = document.getElementById('weekly-market-read');
   if (readEl) readEl.style.display = hasData ? 'block' : 'none';
@@ -729,6 +702,7 @@ function resetForm() {
   editingKey = null;
   document.getElementById('form-title').textContent = 'Add new zip code';
   document.getElementById('delete-btn').style.display = 'none';
+  document.getElementById('pdf-btn').style.display = 'none'; // Hide PDF button for new ZIPs
   ['f-zip','f-neighborhood','f-active','f-pending','f-sold','f-expired','f-dom','f-dom-avg','f-fast','f-lsr',
    'f-drop-amt','f-list-price','f-drop-pct','f-demand','f-comp','f-low-sale','f-works','f-doesnt','f-notes'].forEach(id => {
     const el = document.getElementById(id);
@@ -756,6 +730,7 @@ function editZip(key) {
   const titleLabel = neighborhood ? (zip + ' — ' + neighborhood) : zip;
   document.getElementById('form-title').textContent = 'Edit / Update — ' + titleLabel;
   document.getElementById('delete-btn').style.display = 'inline-block';
+  document.getElementById('pdf-btn').style.display = 'inline-block'; // Show PDF button when editing
   document.getElementById('f-zip').value = zip;
   document.getElementById('f-neighborhood').value = neighborhood;
   document.getElementById('f-zip').disabled = true;
@@ -783,11 +758,285 @@ function editZip(key) {
   showPage('add');
 }
 
+// ── PDF EXPORT ───────────────────────────────────────────
+function sanitizeFilenamePart(s) {
+  return String(s == null ? '' : s)
+    .replace(/[^a-zA-Z0-9 _-]/g, '')
+    .trim()
+    .replace(/\s+/g, '-');
+}
+
+function buildPdfFilename(zipRecord) {
+  const zip = sanitizeFilenamePart(zipRecord.zip || 'UNKNOWN');
+  const neighborhood = sanitizeFilenamePart(zipRecord.neighborhood || 'Area');
+  const latest = zipRecord.history && zipRecord.history.length > 0 ? zipRecord.history[zipRecord.history.length - 1] : null;
+  const weekDate = latest && latest.isoDate ? latest.isoDate : new Date().toISOString().split('T')[0];
+  return `${zip}-${neighborhood}-Week-${weekDate}-Market-Report.pdf`;
+}
+
+function generateZipPDF(zipRecord) {
+  if (!window.jspdf || !window.jspdf.jsPDF) {
+    toast('PDF library not loaded. Check your connection.');
+    return false;
+  }
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'pt', format: 'letter' });
+
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const marginLeft = 48;
+  const marginRight = 48;
+  const marginTop = 48;
+  const marginBottom = 48;
+  const contentWidth = pageWidth - marginLeft - marginRight;
+  let y = marginTop;
+
+  const zip = zipRecord.zip || '';
+  const neighborhood = zipRecord.neighborhood || '';
+  const role = zipRecord.role || '';
+  const works = zipRecord.works || '';
+  const doesnt = zipRecord.doesnt || '';
+  const notes = zipRecord.notes || '';
+  const distress = zipRecord.distress || '';
+  const history = zipRecord.history || [];
+  const latest = history.length > 0 ? history[history.length - 1] : null;
+
+  // Helper: ensure we have space, otherwise add new page
+  function ensureSpace(needed) {
+    if (y + needed > pageHeight - marginBottom) {
+      doc.addPage();
+      y = marginTop;
+    }
+  }
+
+  // Helper: draw a section heading
+  function drawSectionHeading(text) {
+    ensureSpace(28);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(12);
+    doc.setTextColor(26, 26, 26);
+    doc.text(text, marginLeft, y);
+    y += 6;
+    doc.setDrawColor(200, 200, 200);
+    doc.setLineWidth(0.5);
+    doc.line(marginLeft, y, marginLeft + contentWidth, y);
+    y += 14;
+  }
+
+  // Helper: draw a key-value row
+  function drawKV(label, value) {
+    ensureSpace(18);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    doc.setTextColor(120, 120, 120);
+    doc.text(label, marginLeft, y);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(26, 26, 26);
+    const valueStr = (value === null || value === undefined || value === '') ? '—' : String(value);
+    const labelWidth = 200;
+    const valueLines = doc.splitTextToSize(valueStr, contentWidth - labelWidth);
+    doc.text(valueLines, marginLeft + labelWidth, y);
+    y += Math.max(14, valueLines.length * 12);
+  }
+
+  // Helper: draw a wrapped paragraph
+  function drawParagraph(text) {
+    if (!text) {
+      ensureSpace(14);
+      doc.setFont('helvetica', 'italic');
+      doc.setFontSize(10);
+      doc.setTextColor(150, 150, 150);
+      doc.text('(none)', marginLeft, y);
+      y += 14;
+      return;
+    }
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    doc.setTextColor(60, 60, 60);
+    const lines = doc.splitTextToSize(text, contentWidth);
+    lines.forEach(line => {
+      ensureSpace(14);
+      doc.text(line, marginLeft, y);
+      y += 13;
+    });
+    y += 4;
+  }
+
+  // ── TITLE ────────────────────────────────────────────
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(20);
+  doc.setTextColor(26, 26, 26);
+  doc.text('Weekly ZIP Market Report', marginLeft, y);
+  y += 24;
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(16);
+  const titleLine = neighborhood ? `${zip} — ${neighborhood}` : zip;
+  doc.text(titleLine, marginLeft, y);
+  y += 18;
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.setTextColor(140, 140, 140);
+  const generatedAt = new Date().toLocaleString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  doc.text('Generated: ' + generatedAt, marginLeft, y);
+  y += 20;
+
+  // ── ZIP METADATA ────────────────────────────────────
+  drawSectionHeading('ZIP Overview');
+  drawKV('ZIP Code', zip);
+  drawKV('Neighborhood', neighborhood);
+  drawKV('Role / Strategy', role);
+  drawKV('Distress Level', distress);
+  if (latest) drawKV('Week of', latest.date || latest.isoDate || '—');
+  y += 6;
+
+  // ── CURRENT WEEK METRICS ────────────────────────────
+  if (latest) {
+    drawSectionHeading('Current Week Metrics');
+    drawKV('Active Listings', latest.active);
+    drawKV('Pending', latest.pending);
+    drawKV('Sold (last 7 days)', latest.sold);
+    drawKV('Expired / Cancelled (last 7 days)', latest.expired != null ? latest.expired : 0);
+    drawKV('Median Days on Market', latest.dom != null ? latest.dom + ' days' : '—');
+    drawKV('Average Days on Market', latest.domAvg != null ? latest.domAvg + ' days' : '—');
+    drawKV('% Sold in 0–30 Days', latest.fast != null ? latest.fast + '%' : '—');
+    drawKV('List-to-Sale Ratio', latest.lsr != null ? latest.lsr + '%' : '—');
+    drawKV('Average Price Drop ($)', latest.dropAmt != null ? '$' + Number(latest.dropAmt).toLocaleString() : '—');
+    drawKV('Average Price Drop (%)', latest.dropPct != null ? latest.dropPct + '%' : '—');
+    if (latest.listPrice) drawKV('Average List Price', '$' + Number(latest.listPrice).toLocaleString());
+    if (latest.lowSale) drawKV('Low Sale Price (distress floor)', '$' + Number(latest.lowSale).toLocaleString());
+    drawKV('Weekly Demand Ratio', latest.demand != null ? latest.demand : '—');
+    drawKV('Competition Score', latest.comp != null ? latest.comp + ' / 10' : '—');
+    drawKV('Pressure Score', latest.pressureScore != null ? latest.pressureScore + ' / 10 (' + (latest.pressureLevel || '') + ')' : '—');
+    drawKV('Weekly ZIP Score', latest.zipScore != null ? latest.zipScore + ' / 10' : '—');
+    drawKV('Status', latest.status || '—');
+    drawKV('Recommended Action', latest.action || '—');
+    y += 6;
+  } else {
+    drawSectionHeading('Current Week Metrics');
+    doc.setFont('helvetica', 'italic');
+    doc.setFontSize(10);
+    doc.setTextColor(150, 150, 150);
+    ensureSpace(14);
+    doc.text('No weekly data recorded yet.', marginLeft, y);
+    y += 20;
+  }
+
+  // ── MARKET READ SUMMARY ─────────────────────────────
+  if (latest && latest.summary) {
+    drawSectionHeading('Market Read Summary');
+    drawParagraph(latest.summary);
+  }
+
+  // ── INVESTOR STRATEGY ───────────────────────────────
+  drawSectionHeading('What Works Here');
+  drawParagraph(works);
+
+  drawSectionHeading("What Doesn't Work");
+  drawParagraph(doesnt);
+
+  drawSectionHeading('Notes / Investor Read');
+  drawParagraph(notes);
+
+  // ── FULL HISTORY ────────────────────────────────────
+  if (history.length > 0) {
+    drawSectionHeading('Full Weekly History (' + history.length + ' entries)');
+
+    // Header row
+    ensureSpace(20);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(120, 120, 120);
+    const colX = {
+      date: marginLeft,
+      active: marginLeft + 90,
+      pending: marginLeft + 135,
+      sold: marginLeft + 180,
+      expired: marginLeft + 220,
+      dom: marginLeft + 265,
+      status: marginLeft + 305,
+      score: marginLeft + 395
+    };
+    doc.text('Date', colX.date, y);
+    doc.text('Act', colX.active, y);
+    doc.text('Pend', colX.pending, y);
+    doc.text('Sold', colX.sold, y);
+    doc.text('Exp', colX.expired, y);
+    doc.text('DOM', colX.dom, y);
+    doc.text('Status', colX.status, y);
+    doc.text('ZIP Score', colX.score, y);
+    y += 4;
+    doc.setDrawColor(220, 220, 220);
+    doc.line(marginLeft, y, marginLeft + contentWidth, y);
+    y += 10;
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(50, 50, 50);
+
+    // Iterate newest first
+    [...history].reverse().forEach((h, idx) => {
+      ensureSpace(14);
+      doc.text(String(h.date || h.isoDate || '—').substring(0, 14), colX.date, y);
+      doc.text(String(h.active != null ? h.active : '—'), colX.active, y);
+      doc.text(String(h.pending != null ? h.pending : '—'), colX.pending, y);
+      doc.text(String(h.sold != null ? h.sold : '—'), colX.sold, y);
+      doc.text(String(h.expired != null ? h.expired : 0), colX.expired, y);
+      doc.text(String(h.dom != null ? h.dom + 'd' : '—'), colX.dom, y);
+      doc.text(String(h.status || '—').substring(0, 14), colX.status, y);
+      doc.text(String(h.zipScore != null ? h.zipScore : '—'), colX.score, y);
+      y += 12;
+    });
+  }
+
+  // ── FOOTER on every page ────────────────────────────
+  const totalPages = doc.internal.getNumberOfPages();
+  for (let i = 1; i <= totalPages; i++) {
+    doc.setPage(i);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(160, 160, 160);
+    doc.text('Weekly ZIP Market Tracker', marginLeft, pageHeight - 24);
+    doc.text('Page ' + i + ' of ' + totalPages, pageWidth - marginRight, pageHeight - 24, { align: 'right' });
+  }
+
+  const filename = buildPdfFilename(zipRecord);
+  doc.save(filename);
+  return true;
+}
+
+function downloadCurrentZipPDF() {
+  if (!editingKey) {
+    toast('No ZIP selected for PDF export.');
+    return;
+  }
+  const z = db.zips[editingKey];
+  if (!z) {
+    toast('ZIP data not found.');
+    return;
+  }
+  const ok = generateZipPDF(z);
+  if (ok) toast('PDF downloaded');
+}
+
 async function saveZip() {
   const zip = (document.getElementById('f-zip').value||'').trim();
   const neighborhood = (document.getElementById('f-neighborhood').value||'').trim();
   if (!zip) { alert('Enter a zip code'); return; }
   const key = makeKey(zip, neighborhood);
+
+  // Backup confirmation when overwriting an existing ZIP
+  const isOverwrite = editingKey && db.zips[editingKey] && db.zips[editingKey].history && db.zips[editingKey].history.length > 0;
+  if (isOverwrite) {
+    const backupChoice = confirm('Do you want to download a PDF backup before saving this new update?\n\nClick OK to download the backup first, or Cancel to skip the backup and save directly.');
+    if (backupChoice) {
+      generateZipPDF(db.zips[editingKey]);
+      // Small delay to let the download trigger before we continue saving
+      await new Promise(resolve => setTimeout(resolve, 400));
+    }
+  }
+
   const isoDate = document.getElementById('f-date').value || new Date().toISOString().split('T')[0];
   const dateLabel = new Date(isoDate + 'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
   const active    = parseFloat(document.getElementById('f-active').value)||0;
@@ -864,7 +1113,6 @@ function distressBadge(d) {
   return '<span class="badge-mod">Moderate</span>';
 }
 
-// Safe HTML escape for user input rendered in HTML (zip, neighborhood, etc.)
 function esc(s) {
   return String(s == null ? '' : s)
     .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
