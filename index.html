@@ -1149,7 +1149,7 @@ function renderDashboard() {
   grid.innerHTML = keys.map(k => {
     const z = db.zips[k];
     const zip = z.zip || parseKey(k).zip;
-    const neighborhood = z.neighborhood || '';
+    const neighborhood = z.neighborhood || parseKey(k).neighborhood || '';
     const l = z.history[z.history.length-1];
     const score = l && l.zipScore ? parseFloat(l.zipScore) : 0;
     const prev = z.history.length>1 ? z.history[z.history.length-2] : null;
@@ -1191,7 +1191,7 @@ function renderRanking() {
     const l=z.history[z.history.length-1];
     const ps=l&&l.pressureScore?parseFloat(l.pressureScore):0;
     const zs=l&&l.zipScore?parseFloat(l.zipScore):0;
-    return {k, z, zip: z.zip || parseKey(k).zip, neighborhood: z.neighborhood || '', pressureScore:ps, score:zs};
+    return {k, z, zip: z.zip || parseKey(k).zip, neighborhood: z.neighborhood || parseKey(k).neighborhood || '', pressureScore:ps, score:zs};
   }).sort((a,b)=>b.pressureScore-a.pressureScore||b.score-a.score);
   const medals=['🥇','🥈','🥉','4️⃣','5️⃣','6️⃣','7️⃣','8️⃣','9️⃣'];
   document.getElementById('rank-table').innerHTML=`
@@ -1230,7 +1230,7 @@ function renderDetail(key) {
   if (!z) { showPage('dashboard'); return; }
   currentDetailKey = key; // remember which ZIP the detail page is showing
   const zip = z.zip || parseKey(key).zip;
-  const neighborhood = z.neighborhood || '';
+  const neighborhood = z.neighborhood || parseKey(key).neighborhood || '';
   const l = z.history[z.history.length-1];
   const prev = z.history.length>1 ? z.history[z.history.length-2] : null;
   const score = l && l.zipScore ? parseFloat(l.zipScore) : 0;
