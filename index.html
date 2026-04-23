@@ -524,7 +524,7 @@ function showPage(name, key) {
   document.getElementById('sync-dropdown').classList.remove('open');
   if (name==='dashboard') { document.querySelector('.tab').classList.add('active'); renderDashboard(); }
   if (name==='ranking')   { document.querySelectorAll('.tab')[1].classList.add('active'); renderRanking(); }
-  if (name==='add')       { resetForm(); }
+  if (name==='add' && !editingKey) { resetForm(); }
   if (name==='detail' && key) { renderDetail(key); }
 }
 
