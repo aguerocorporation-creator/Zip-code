@@ -735,7 +735,7 @@ function editZip(key) {
   document.getElementById('f-zip').value = zip;
   document.getElementById('f-neighborhood').value = neighborhood;
   document.getElementById('f-zip').disabled = true;
-  document.getElementById('f-neighborhood').disabled = true;
+  document.getElementById('f-neighborhood').disabled = false;
   document.getElementById('f-role').value = z.role||'Main focus';
   document.getElementById('f-distress').value = z.distress||'Moderate';
   document.getElementById('f-works').value = z.works||'';
@@ -1027,12 +1027,29 @@ async function saveZip() {
   if (!zip) { alert('Enter a zip code'); return; }
   const key = makeKey(zip, neighborhood);
 
+  // If the user changed the neighborhood while editing, the key changes too.
+  // Migrate the existing record (history + meta) to the new key and remove the old one.
+  const oldKey = editingKey; // remember this for Supabase cleanup at the end
+  const keyChanged = editingKey && editingKey !== key && db.zips[editingKey];
+  if (keyChanged) {
+    // Prevent overwriting a different existing record by accident
+    if (db.zips[key]) {
+      const proceed = confirm('A record already exists for ' + zip + (neighborhood ? ' — ' + neighborhood : '') + '.\n\nClick OK to overwrite it, or Cancel to pick a different neighborhood name.');
+      if (!proceed) return;
+    }
+    // Move the old record to the new key so history and notes survive
+    db.zips[key] = db.zips[editingKey];
+    db.zips[key].zip = zip;
+    db.zips[key].neighborhood = neighborhood;
+    delete db.zips[editingKey];
+  }
+
   // Backup confirmation when overwriting an existing ZIP
-  const isOverwrite = editingKey && db.zips[editingKey] && db.zips[editingKey].history && db.zips[editingKey].history.length > 0;
+  const isOverwrite = editingKey && db.zips[key] && db.zips[key].history && db.zips[key].history.length > 0;
   if (isOverwrite) {
     const backupChoice = confirm('Do you want to download a PDF backup before saving this new update?\n\nClick OK to download the backup first, or Cancel to skip the backup and save directly.');
     if (backupChoice) {
-      generateZipPDF(db.zips[editingKey]);
+      generateZipPDF(db.zips[key]);
       // Small delay to let the download trigger before we continue saving
       await new Promise(resolve => setTimeout(resolve, 400));
     }
@@ -1083,6 +1100,11 @@ async function saveZip() {
   saveLocal();
   setSyncStatus('syncing');
   await upsertToSupabase(key);
+  // If the neighborhood changed, the record now lives under a new key.
+  // Remove the old row from Supabase so the database stays in sync with local state.
+  if (keyChanged && oldKey && oldKey !== key) {
+    await deleteFromSupabase(oldKey);
+  }
   toast('Saved!');
   showPage('dashboard');
 }
@@ -1148,8 +1170,9 @@ function renderDashboard() {
 
   grid.innerHTML = keys.map(k => {
     const z = db.zips[k];
-    const zip = z.zip || parseKey(k).zip;
-    const neighborhood = z.neighborhood || parseKey(k).neighborhood || '';
+    const parsed = parseKey(k);
+    const zip = z.zip || parsed.zip;
+    const neighborhood = z.neighborhood || parsed.neighborhood || '';
     const l = z.history[z.history.length-1];
     const score = l && l.zipScore ? parseFloat(l.zipScore) : 0;
     const prev = z.history.length>1 ? z.history[z.history.length-2] : null;
