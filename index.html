@@ -319,6 +319,7 @@ const DB_KEY     = 'ziptracker_v2';
 let sbClient = null;
 let db = { zips: {} };
 let editingKey = null; // combined key: "zip|neighborhood"
+let currentDetailKey = null; // tracks which ZIP is open on the detail page
 
 // ── KEY HELPERS ──────────────────────────────────────────
 function makeKey(zip, neighborhood) {
@@ -1227,6 +1228,7 @@ function renderRanking() {
 function renderDetail(key) {
   const z = db.zips[key];
   if (!z) { showPage('dashboard'); return; }
+  currentDetailKey = key; // remember which ZIP the detail page is showing
   const zip = z.zip || parseKey(key).zip;
   const neighborhood = z.neighborhood || '';
   const l = z.history[z.history.length-1];
@@ -1253,6 +1255,10 @@ function renderDetail(key) {
         <div class="detail-zip">${esc(zip)}</div>
         ${neighborhood?`<div class="detail-neighborhood">${esc(neighborhood)}</div>`:''}
         <div class="detail-role">${esc(z.role)} &nbsp;·&nbsp; ${distressBadge(z.distress)}</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+          <button class="btn-primary" style="padding:6px 14px;font-size:12px" onclick="editZip(currentDetailKey)">✏️ Edit / Update ZIP</button>
+          <button class="btn-pdf" style="padding:6px 14px;font-size:12px" onclick="generateZipPDF(db.zips[currentDetailKey])">📄 Download PDF</button>
+        </div>
       </div>
       <div style="text-align:right">
         <div style="font-size:28px;font-weight:700">${score}<span style="font-size:14px;color:#888">/10</span></div>
