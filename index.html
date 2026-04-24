@@ -221,7 +221,7 @@ header span{font-size:12px;color:#aaa}
 <div class="tabs" id="tabs">
   <div class="tab active" onclick="showPage('dashboard')">Dashboard</div>
   <div class="tab" onclick="showPage('ranking')">Rankings</div>
-  <div class="tab-add" onclick="showPage('add')" title="Add zip code">+</div>
+  <div class="tab-add" onclick="startNewZip()" title="Add zip code">+</div>
 </div>
 
 <!-- DASHBOARD -->
@@ -697,6 +697,12 @@ function autoCalc() {
 
     document.getElementById('mkt-summary').textContent = c.summary;
   }
+}
+
+function startNewZip() {
+  editingKey = null;     // clear edit mode so showPage('add') will allow the reset
+  resetForm();           // force clean form
+  showPage('add');       // open add page
 }
 
 function resetForm() {
