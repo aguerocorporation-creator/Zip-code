@@ -215,6 +215,17 @@ header span{font-size:12px;color:#aaa}
       <div class="sync-connected-info"><span style="color:#1e8449;font-weight:600">● Connected</span> — data syncs across all your devices automatically.</div>
       <button class="sync-disconnect" onclick="disconnectSupabase()">Disconnect</button>
     </div>
+
+    <!-- DATA SAFETY (always visible) -->
+    <div style="border-top:1px solid #eee;margin-top:12px;padding-top:12px">
+      <div class="sync-dropdown-title" style="margin-bottom:8px">Data safety</div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <button class="btn-secondary" style="font-size:12px;padding:7px 10px;text-align:left" onclick="downloadJSONBackup()">⬇ Download JSON Backup</button>
+        <button class="btn-secondary" style="font-size:12px;padding:7px 10px;text-align:left" onclick="triggerJSONImport()">⬆ Import JSON Backup</button>
+        <button class="btn-secondary" style="font-size:12px;padding:7px 10px;text-align:left" onclick="restoreLastBackup()">↺ Restore Last Backup</button>
+      </div>
+      <input type="file" id="json-import-file" accept="application/json,.json" style="display:none" onchange="importJSONBackup(event)">
+    </div>
   </div>
 </header>
 
@@ -339,6 +350,138 @@ function loadLocal() {
 function saveLocal() {
   localStorage.setItem(DB_KEY, JSON.stringify(db));
 }
+
+// ── LOCAL BACKUPS (data-safety layer) ────────────────────
+const BACKUP_PREFIX = 'ziptracker_backup_';
+const MAX_BACKUPS = 10; // keep the 10 most recent automatic backups
+
+function createBackup(reason) {
+  try {
+    // Don't waste a backup slot on an empty db
+    if (!db || !db.zips || Object.keys(db.zips).length === 0) return null;
+    const timestamp = new Date().toISOString();
+    const key = BACKUP_PREFIX + timestamp + (reason ? '__' + reason.replace(/[^a-zA-Z0-9_-]/g,'') : '');
+    localStorage.setItem(key, JSON.stringify(db));
+    pruneOldBackups();
+    return key;
+  } catch(e) {
+    // quota exceeded, ignore silently — safety backup is best-effort
+    return null;
+  }
+}
+
+function listBackups() {
+  const keys = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && k.indexOf(BACKUP_PREFIX) === 0) keys.push(k);
+  }
+  // Newest first — the timestamp is lexicographically sortable
+  return keys.sort().reverse();
+}
+
+function pruneOldBackups() {
+  const all = listBackups();
+  if (all.length <= MAX_BACKUPS) return;
+  all.slice(MAX_BACKUPS).forEach(k => localStorage.removeItem(k));
+}
+
+function restoreLastBackup() {
+  const all = listBackups();
+  if (all.length === 0) {
+    alert('No backups available to restore.');
+    return;
+  }
+  const latest = all[0];
+  const confirmMsg = 'Restore the most recent local backup?\n\nBackup: ' + latest.replace(BACKUP_PREFIX,'').slice(0,19) + '\n\nThis will replace your current app state. A safety snapshot will be taken first.';
+  if (!confirm(confirmMsg)) return;
+  // Take a snapshot of the current state before overwriting, just in case
+  createBackup('pre_restore');
+  try {
+    const raw = localStorage.getItem(latest);
+    const restored = JSON.parse(raw);
+    if (!restored || typeof restored !== 'object' || !restored.zips) {
+      alert('Backup appears corrupted. Restore aborted.');
+      return;
+    }
+    db = restored;
+    saveLocal();
+    renderDashboard();
+    toast('Restored ' + Object.keys(db.zips).length + ' ZIPs from backup');
+  } catch(e) {
+    alert('Failed to restore backup: ' + e.message);
+  }
+}
+
+function downloadJSONBackup() {
+  const payload = {
+    exported_at: new Date().toISOString(),
+    app: 'ziptracker',
+    version: 2,
+    data: db
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const dateStr = new Date().toISOString().replace(/[:.]/g,'-').slice(0,19);
+  a.href = url;
+  a.download = 'ziptracker-backup-' + dateStr + '.json';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => {
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, 100);
+  toast('JSON backup downloaded');
+}
+
+function triggerJSONImport() {
+  document.getElementById('json-import-file').click();
+}
+
+function importJSONBackup(event) {
+  const file = event.target.files && event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const parsed = JSON.parse(e.target.result);
+      // Accept either { data: { zips: {...} } } or { zips: {...} } at the top level
+      const incoming = parsed && parsed.data && parsed.data.zips ? parsed.data
+                     : parsed && parsed.zips                    ? parsed
+                     : null;
+      if (!incoming || !incoming.zips || typeof incoming.zips !== 'object') {
+        alert('This file does not look like a valid ZIP Tracker backup.');
+        return;
+      }
+      const incomingCount = Object.keys(incoming.zips).length;
+      const currentCount  = db && db.zips ? Object.keys(db.zips).length : 0;
+      const msg = 'Import ' + incomingCount + ' ZIPs from file?\n\n' +
+                  'Choose how to handle existing data:\n' +
+                  '• OK = MERGE (keep current ZIPs, add/update from file)\n' +
+                  '• Cancel = abort import\n\n' +
+                  'Current local ZIPs: ' + currentCount + '\n' +
+                  'File ZIPs: ' + incomingCount;
+      if (!confirm(msg)) return;
+      // Safety backup before touching anything
+      createBackup('pre_import');
+      // Merge: incoming wins per-key, but untouched local keys survive
+      Object.keys(incoming.zips).forEach(k => {
+        db.zips[k] = incoming.zips[k];
+      });
+      saveLocal();
+      renderDashboard();
+      toast('Imported — now ' + Object.keys(db.zips).length + ' ZIPs total');
+    } catch(err) {
+      alert('Could not read the backup file: ' + err.message);
+    } finally {
+      // Reset input so selecting the same file twice still fires change
+      event.target.value = '';
+    }
+  };
+  reader.readAsText(file);
+}
+
 function migrateLegacyKeys() {
   const oldKeys = Object.keys(db.zips).filter(k => !k.includes('|'));
   if (oldKeys.length === 0) return;
@@ -431,30 +574,66 @@ async function loadFromSupabase() {
   if (!sbClient) return;
   const { data, error } = await sbClient.from('zip_tracker').select('*');
   if (error) { toast('Sync error: ' + error.message); return; }
-  db = { zips: {} };
-  (data || []).forEach(row => {
+
+  const rows = data || [];
+  const localKeyCount = db && db.zips ? Object.keys(db.zips).length : 0;
+
+  // SAFETY RULE 1: Never wipe local data because Supabase came back empty.
+  if (rows.length === 0) {
+    if (localKeyCount > 0) {
+      toast('Supabase has no records. Keeping local data safe.');
+    }
+    // Nothing to merge; leave db.zips untouched.
+    return;
+  }
+
+  // SAFETY RULE 2: Always back up before we accept remote data.
+  createBackup('pre_sync');
+
+  // SAFETY RULE 3: Merge — do not replace. Existing local-only ZIPs survive.
+  rows.forEach(row => {
     const neighborhood = row.neighborhood || '';
     const key = makeKey(row.zip, neighborhood);
+
     if (!db.zips[key]) {
       db.zips[key] = {
         zip: row.zip,
         neighborhood: neighborhood,
-        role: row.role, distress: row.distress,
-        works: row.works, doesnt: row.doesnt, notes: row.notes,
+        role: row.role || '',
+        distress: row.distress || 'Moderate',
+        works: row.works || '',
+        doesnt: row.doesnt || '',
+        notes: row.notes || '',
         history: []
       };
     }
+
+    // Merge history without creating duplicates. Match by isoDate if present,
+    // otherwise by a date+active+pending+sold fingerprint.
     if (row.entry_data) {
-      db.zips[key].history.push(row.entry_data);
+      const incoming = row.entry_data;
+      const fingerprint = (e) => (e && (e.isoDate || (String(e.date||'') + '|' + e.active + '|' + e.pending + '|' + e.sold))) || '';
+      const incomingFp = fingerprint(incoming);
+      const existing = db.zips[key].history || [];
+      const alreadyThere = existing.some(h => fingerprint(h) === incomingFp);
+      if (!alreadyThere) {
+        db.zips[key].history.push(incoming);
+        // Keep history chronological when possible
+        db.zips[key].history.sort((a,b) => String(a.isoDate||'').localeCompare(String(b.isoDate||'')));
+      }
     }
+
+    // Update metadata fields from Supabase (remote is authoritative for these
+    // on a per-ZIP basis, but only for ZIPs Supabase actually returned).
     db.zips[key].zip          = row.zip;
     db.zips[key].neighborhood = neighborhood;
-    db.zips[key].role         = row.role;
-    db.zips[key].distress     = row.distress;
-    db.zips[key].works        = row.works;
-    db.zips[key].doesnt       = row.doesnt;
-    db.zips[key].notes        = row.notes;
+    if (row.role     !== undefined && row.role !== null)     db.zips[key].role     = row.role;
+    if (row.distress !== undefined && row.distress !== null) db.zips[key].distress = row.distress;
+    if (row.works    !== undefined && row.works !== null)    db.zips[key].works    = row.works;
+    if (row.doesnt   !== undefined && row.doesnt !== null)   db.zips[key].doesnt   = row.doesnt;
+    if (row.notes    !== undefined && row.notes !== null)    db.zips[key].notes    = row.notes;
   });
+
   saveLocal();
 }
 
@@ -1119,7 +1298,13 @@ async function deleteZip() {
   if (!editingKey) return;
   const { zip, neighborhood } = parseKey(editingKey);
   const label = neighborhood ? (zip + ' — ' + neighborhood) : zip;
-  if (!confirm('Delete ' + label + '? This cannot be undone.')) return;
+  const typed = prompt('Delete ' + label + '?\n\nThis cannot be undone.\nType DELETE (all caps) to confirm:');
+  if (typed !== 'DELETE') {
+    if (typed !== null) toast('Delete cancelled — text did not match');
+    return;
+  }
+  // Safety snapshot before removing anything
+  createBackup('pre_delete');
   delete db.zips[editingKey];
   document.getElementById('f-zip').disabled = false;
   document.getElementById('f-neighborhood').disabled = false;
