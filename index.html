@@ -223,6 +223,7 @@ header span{font-size:12px;color:#aaa}
         <button class="btn-secondary" style="font-size:12px;padding:7px 10px;text-align:left" onclick="downloadJSONBackup()">⬇ Download JSON Backup</button>
         <button class="btn-secondary" style="font-size:12px;padding:7px 10px;text-align:left" onclick="triggerJSONImport()">⬆ Import JSON Backup</button>
         <button class="btn-secondary" style="font-size:12px;padding:7px 10px;text-align:left" onclick="restoreLastBackup()">↺ Restore Last Backup</button>
+        <button class="btn-secondary" style="font-size:12px;padding:7px 10px;text-align:left" onclick="cleanDuplicateZips()">⚑ Clean Duplicate ZIPs</button>
       </div>
       <input type="file" id="json-import-file" accept="application/json,.json" style="display:none" onchange="importJSONBackup(event)">
     </div>
@@ -333,8 +334,22 @@ let editingKey = null; // combined key: "zip|neighborhood"
 let currentDetailKey = null; // tracks which ZIP is open on the detail page
 
 // ── KEY HELPERS ──────────────────────────────────────────
+// ── KEY NORMALIZATION ────────────────────────────────────
+// Treat null, undefined, the literal strings "null"/"undefined", and whitespace-only
+// values as an empty neighborhood. This is the single source of truth for keys —
+// everywhere else must pass values through here before building a key.
+function normalizeZip(zip) {
+  if (zip === null || zip === undefined) return '';
+  return String(zip).trim();
+}
+function normalizeNeighborhood(nb) {
+  if (nb === null || nb === undefined) return '';
+  const s = String(nb).trim();
+  if (s === '' || s.toLowerCase() === 'null' || s.toLowerCase() === 'undefined') return '';
+  return s;
+}
 function makeKey(zip, neighborhood) {
-  return (zip || '').trim() + '|' + (neighborhood || '').trim();
+  return normalizeZip(zip) + '|' + normalizeNeighborhood(neighborhood);
 }
 function parseKey(key) {
   const idx = key.indexOf('|');
@@ -346,6 +361,8 @@ function parseKey(key) {
 function loadLocal() {
   try { db = JSON.parse(localStorage.getItem(DB_KEY) || '{"zips":{}}'); } catch(e) { db = { zips: {} }; }
   migrateLegacyKeys();
+  dedupeZipRecords();
+  saveLocal();
 }
 function saveLocal() {
   localStorage.setItem(DB_KEY, JSON.stringify(db));
@@ -469,6 +486,9 @@ function importJSONBackup(event) {
       Object.keys(incoming.zips).forEach(k => {
         db.zips[k] = incoming.zips[k];
       });
+      // Import may re-introduce duplicates (e.g. old file had both "40216|" and
+      // "40216| " records). Run dedupe to normalize before saving.
+      dedupeZipRecords();
       saveLocal();
       renderDashboard();
       toast('Imported — now ' + Object.keys(db.zips).length + ' ZIPs total');
@@ -495,6 +515,146 @@ function migrateLegacyKeys() {
     delete db.zips[oldKey];
   });
   saveLocal();
+}
+
+// ── DEDUPE ZIP RECORDS ───────────────────────────────────
+// Groups all records by their NORMALIZED key (zip + neighborhood). When two or
+// more records collapse to the same normalized key, merges them non-destructively:
+//   - history entries are combined, deduped by a fingerprint (isoDate first,
+//     otherwise date+active+pending+sold), then sorted chronologically
+//   - notes/works/doesnt pick the longest non-empty value across duplicates
+//   - role/distress prefer the first non-empty value
+// History is NEVER dropped — every unique weekly entry survives. Safe to run
+// any number of times; an already-clean db is left unchanged.
+function dedupeZipRecords() {
+  if (!db || !db.zips) return 0;
+
+  const fingerprint = (e) => {
+    if (!e) return '';
+    if (e.isoDate) return 'iso:' + e.isoDate;
+    return 'fp:' + String(e.date || '') + '|' + e.active + '|' + e.pending + '|' + e.sold;
+  };
+
+  const pickLongest = (a, b) => {
+    const sa = (a == null ? '' : String(a)).trim();
+    const sb = (b == null ? '' : String(b)).trim();
+    if (sa.length >= sb.length) return sa;
+    return sb;
+  };
+
+  const pickFirstNonEmpty = (a, b) => {
+    const sa = (a == null ? '' : String(a)).trim();
+    if (sa) return a;
+    return b;
+  };
+
+  // Bucket every existing record under its canonical normalized key.
+  const groups = {}; // canonicalKey -> array of { originalKey, record }
+  Object.keys(db.zips).forEach(originalKey => {
+    const record = db.zips[originalKey];
+    const parsed = parseKey(originalKey);
+    const zip          = normalizeZip(record.zip || parsed.zip);
+    const neighborhood = normalizeNeighborhood(record.neighborhood != null ? record.neighborhood : parsed.neighborhood);
+    const canonical    = zip + '|' + neighborhood;
+    if (!groups[canonical]) groups[canonical] = [];
+    groups[canonical].push({ originalKey, record, canonicalZip: zip, canonicalNb: neighborhood });
+  });
+
+  // Rebuild db.zips from the groups.
+  const rebuilt = {};
+  let mergesPerformed = 0;
+
+  Object.keys(groups).forEach(canonical => {
+    const bucket = groups[canonical];
+    const { canonicalZip, canonicalNb } = bucket[0];
+
+    if (bucket.length === 1) {
+      // Single record — just re-home it under the canonical key, ensure fields normalized.
+      const r = bucket[0].record;
+      r.zip = canonicalZip;
+      r.neighborhood = canonicalNb;
+      if (!Array.isArray(r.history)) r.history = [];
+      rebuilt[canonical] = r;
+      return;
+    }
+
+    // Multiple records collapse into one. Prefer the record whose original key already
+    // matched the canonical form — that's most likely the "real" one, and putting it
+    // first means its metadata wins ties.
+    mergesPerformed += (bucket.length - 1);
+    bucket.sort((a, b) => {
+      const aMatch = a.originalKey === canonical ? 0 : 1;
+      const bMatch = b.originalKey === canonical ? 0 : 1;
+      return aMatch - bMatch;
+    });
+
+    const merged = {
+      zip: canonicalZip,
+      neighborhood: canonicalNb,
+      role: '',
+      distress: '',
+      works: '',
+      doesnt: '',
+      notes: '',
+      history: []
+    };
+
+    // Combine metadata safely.
+    bucket.forEach(item => {
+      const r = item.record || {};
+      merged.role     = pickFirstNonEmpty(merged.role,     r.role);
+      merged.distress = pickFirstNonEmpty(merged.distress, r.distress);
+      merged.works    = pickLongest(merged.works,    r.works);
+      merged.doesnt   = pickLongest(merged.doesnt,   r.doesnt);
+      merged.notes    = pickLongest(merged.notes,    r.notes);
+    });
+
+    // Combine histories, deduping by fingerprint.
+    const seenFingerprints = new Set();
+    bucket.forEach(item => {
+      const hist = (item.record && Array.isArray(item.record.history)) ? item.record.history : [];
+      hist.forEach(entry => {
+        const fp = fingerprint(entry);
+        if (seenFingerprints.has(fp)) return;
+        seenFingerprints.add(fp);
+        merged.history.push(entry);
+      });
+    });
+
+    // Chronological sort, oldest first. Entries missing isoDate fall to the end.
+    merged.history.sort((a, b) => {
+      const aIso = String((a && a.isoDate) || '');
+      const bIso = String((b && b.isoDate) || '');
+      if (aIso && !bIso) return -1;
+      if (!aIso && bIso) return 1;
+      return aIso.localeCompare(bIso);
+    });
+
+    // Fill in any still-empty metadata with safe defaults.
+    if (!merged.role)     merged.role     = 'Main focus';
+    if (!merged.distress) merged.distress = 'Moderate';
+
+    rebuilt[canonical] = merged;
+  });
+
+  db.zips = rebuilt;
+  return mergesPerformed;
+}
+
+function cleanDuplicateZips() {
+  const before = Object.keys(db.zips).length;
+  // Take a safety snapshot before touching anything — dedupe is destructive in
+  // the sense that keys disappear, even though history is preserved.
+  createBackup('pre_dedupe');
+  const merges = dedupeZipRecords();
+  const after = Object.keys(db.zips).length;
+  saveLocal();
+  renderDashboard();
+  if (merges === 0 && before === after) {
+    toast('No duplicates found — your data is clean');
+  } else {
+    toast('Cleaned: ' + before + ' → ' + after + ' ZIPs (' + merges + ' duplicates merged)');
+  }
 }
 
 // ── SUPABASE INIT ────────────────────────────────────────
@@ -634,6 +794,10 @@ async function loadFromSupabase() {
     if (row.notes    !== undefined && row.notes !== null)    db.zips[key].notes    = row.notes;
   });
 
+  // Supabase can hand us duplicate rows for the same canonical ZIP (e.g. one row
+  // with neighborhood="" and another with neighborhood=null). Run dedupe to
+  // collapse them into one record before persisting.
+  dedupeZipRecords();
   saveLocal();
 }
 
@@ -1338,6 +1502,8 @@ function renderDashboard() {
   const grid = document.getElementById('zip-grid');
   const searchEl = document.getElementById('dash-search');
   const query = (searchEl ? searchEl.value : '').trim().toLowerCase();
+  // Silent, idempotent dedupe — removes accidental duplicates before display.
+  if (typeof dedupeZipRecords === 'function') dedupeZipRecords();
   const allKeys = Object.keys(db.zips);
 
   if (allKeys.length===0) {
