@@ -348,9 +348,17 @@ function normalizeNeighborhood(nb) {
   if (s === '' || s.toLowerCase() === 'null' || s.toLowerCase() === 'undefined') return '';
   return s;
 }
-function makeKey(zip, neighborhood) {
-  return normalizeZip(zip) + '|' + normalizeNeighborhood(neighborhood);
+// KEY RULE: one ZIP = one record. The key is the ZIP code only.
+// Neighborhood is a display label stored inside the record (z.neighborhood),
+// not part of the key. The second argument is accepted for backward compatibility
+// with existing call sites but is intentionally ignored.
+function makeKey(zip, _neighborhood) {
+  return normalizeZip(zip);
 }
+// parseKey is kept for backward compatibility. New keys are ZIP-only so it
+// always returns neighborhood:''. Legacy keys of the form "zip|neighborhood"
+// still parse correctly — callers should fall back to z.neighborhood for the
+// label, which every record carries.
 function parseKey(key) {
   const idx = key.indexOf('|');
   if (idx === -1) return { zip: key, neighborhood: '' };
@@ -503,18 +511,11 @@ function importJSONBackup(event) {
 }
 
 function migrateLegacyKeys() {
-  const oldKeys = Object.keys(db.zips).filter(k => !k.includes('|'));
-  if (oldKeys.length === 0) return;
-  oldKeys.forEach(oldKey => {
-    const record = db.zips[oldKey];
-    const neighborhood = record.neighborhood || '';
-    const newKey = makeKey(oldKey, neighborhood);
-    if (!record.zip) record.zip = oldKey;
-    if (record.neighborhood === undefined) record.neighborhood = '';
-    db.zips[newKey] = record;
-    delete db.zips[oldKey];
-  });
-  saveLocal();
+  // Kept as a no-op for call-site compatibility. Under the "one ZIP = one record"
+  // rule, dedupeZipRecords() (called immediately after this) handles all legacy
+  // key forms — pipeless keys, "zip|neighborhood" composite keys, and whitespace
+  // variants all collapse to a single canonical ZIP-only key.
+  return;
 }
 
 // ── DEDUPE ZIP RECORDS ───────────────────────────────────
@@ -548,16 +549,22 @@ function dedupeZipRecords() {
     return b;
   };
 
-  // Bucket every existing record under its canonical normalized key.
-  const groups = {}; // canonicalKey -> array of { originalKey, record }
+  // Bucket every existing record under its canonical ZIP-only key.
+  // Two records with the same ZIP but different neighborhoods WILL merge —
+  // this is intentional. One ZIP = one card.
+  const groups = {}; // canonicalKey(zip) -> array of { originalKey, record, candidateNeighborhood }
   Object.keys(db.zips).forEach(originalKey => {
     const record = db.zips[originalKey];
     const parsed = parseKey(originalKey);
-    const zip          = normalizeZip(record.zip || parsed.zip);
-    const neighborhood = normalizeNeighborhood(record.neighborhood != null ? record.neighborhood : parsed.neighborhood);
-    const canonical    = zip + '|' + neighborhood;
+    const zip           = normalizeZip(record.zip || parsed.zip);
+    // Collect the neighborhood candidate from both record field and parsed key,
+    // so legacy "zip|neighborhood" keys still contribute their label.
+    const fromRecord    = normalizeNeighborhood(record.neighborhood);
+    const fromKey       = normalizeNeighborhood(parsed.neighborhood);
+    const candidateNeighborhood = fromRecord || fromKey || '';
+    const canonical     = zip; // ZIP-only key
     if (!groups[canonical]) groups[canonical] = [];
-    groups[canonical].push({ originalKey, record, canonicalZip: zip, canonicalNb: neighborhood });
+    groups[canonical].push({ originalKey, record, canonicalZip: zip, candidateNeighborhood });
   });
 
   // Rebuild db.zips from the groups.
@@ -566,10 +573,19 @@ function dedupeZipRecords() {
 
   Object.keys(groups).forEach(canonical => {
     const bucket = groups[canonical];
-    const { canonicalZip, canonicalNb } = bucket[0];
+    const canonicalZip = bucket[0].canonicalZip;
+
+    // Pick the longest non-empty neighborhood label across the whole bucket.
+    // This is the display name that wins.
+    let canonicalNb = '';
+    bucket.forEach(item => {
+      if (item.candidateNeighborhood && item.candidateNeighborhood.length > canonicalNb.length) {
+        canonicalNb = item.candidateNeighborhood;
+      }
+    });
 
     if (bucket.length === 1) {
-      // Single record — just re-home it under the canonical key, ensure fields normalized.
+      // Single record — re-home it under the ZIP-only key, normalize its fields.
       const r = bucket[0].record;
       r.zip = canonicalZip;
       r.neighborhood = canonicalNb;
@@ -579,7 +595,7 @@ function dedupeZipRecords() {
     }
 
     // Multiple records collapse into one. Prefer the record whose original key already
-    // matched the canonical form — that's most likely the "real" one, and putting it
+    // matched the canonical ZIP — that's most likely the "real" one, and putting it
     // first means its metadata wins ties.
     mergesPerformed += (bucket.length - 1);
     bucket.sort((a, b) => {
@@ -751,14 +767,17 @@ async function loadFromSupabase() {
   createBackup('pre_sync');
 
   // SAFETY RULE 3: Merge — do not replace. Existing local-only ZIPs survive.
+  // With the new one-ZIP=one-record rule, multiple Supabase rows for the same
+  // ZIP (e.g. different neighborhood values) all collapse onto the same local
+  // key. We carefully preserve the best neighborhood label across all rows.
   rows.forEach(row => {
-    const neighborhood = row.neighborhood || '';
-    const key = makeKey(row.zip, neighborhood);
+    const rowNeighborhood = normalizeNeighborhood(row.neighborhood);
+    const key = makeKey(row.zip); // ZIP-only
 
     if (!db.zips[key]) {
       db.zips[key] = {
         zip: row.zip,
-        neighborhood: neighborhood,
+        neighborhood: rowNeighborhood,
         role: row.role || '',
         distress: row.distress || 'Moderate',
         works: row.works || '',
@@ -783,10 +802,15 @@ async function loadFromSupabase() {
       }
     }
 
-    // Update metadata fields from Supabase (remote is authoritative for these
-    // on a per-ZIP basis, but only for ZIPs Supabase actually returned).
-    db.zips[key].zip          = row.zip;
-    db.zips[key].neighborhood = neighborhood;
+    // Update metadata fields from Supabase, but DON'T clobber a good neighborhood
+    // label with an empty or shorter one from a duplicate row.
+    db.zips[key].zip = row.zip;
+    const currentNb = normalizeNeighborhood(db.zips[key].neighborhood);
+    if (rowNeighborhood && rowNeighborhood.length > currentNb.length) {
+      db.zips[key].neighborhood = rowNeighborhood;
+    } else if (!currentNb && rowNeighborhood) {
+      db.zips[key].neighborhood = rowNeighborhood;
+    }
     if (row.role     !== undefined && row.role !== null)     db.zips[key].role     = row.role;
     if (row.distress !== undefined && row.distress !== null) db.zips[key].distress = row.distress;
     if (row.works    !== undefined && row.works !== null)    db.zips[key].works    = row.works;
@@ -794,9 +818,7 @@ async function loadFromSupabase() {
     if (row.notes    !== undefined && row.notes !== null)    db.zips[key].notes    = row.notes;
   });
 
-  // Supabase can hand us duplicate rows for the same canonical ZIP (e.g. one row
-  // with neighborhood="" and another with neighborhood=null). Run dedupe to
-  // collapse them into one record before persisting.
+  // Final safety net: run dedupe in case any legacy composite keys slipped in.
   dedupeZipRecords();
   saveLocal();
 }
@@ -837,10 +859,36 @@ async function deleteFromSupabase(key) {
   }
 }
 
+// Targeted delete for a specific (zip, neighborhood) row. Used when the user
+// renames a neighborhood label — the new row gets upserted under the new
+// neighborhood, and the old row needs to be cleaned up so the next sync
+// doesn't re-hydrate a duplicate.
+async function deleteSupabaseRowByZipNeighborhood(zip, neighborhood) {
+  if (!sbClient) return;
+  const normZip = normalizeZip(zip);
+  const normNb  = normalizeNeighborhood(neighborhood);
+  if (!normZip) return;
+  let q = sbClient.from('zip_tracker').delete().eq('zip', normZip);
+  // Match the exact empty-or-named row. If empty, we filter by empty string;
+  // if the DB stored null, the non-empty path below will cover it separately.
+  if (normNb !== '') {
+    q = q.eq('neighborhood', normNb);
+  } else {
+    q = q.or('neighborhood.is.null,neighborhood.eq.');
+  }
+  const { error } = await q;
+  if (error) {
+    // Silent fallback — leaving a stale row is safer than erroring loudly.
+    // Client dedupe will collapse it on the next load anyway.
+  }
+}
+
 async function updateNotesInSupabase(key) {
   if (!sbClient) return;
   const z = db.zips[key];
-  const { zip, neighborhood } = parseKey(key);
+  if (!z) return;
+  const zip = normalizeZip(z.zip || parseKey(key).zip);
+  const neighborhood = normalizeNeighborhood(z.neighborhood);
   let q = sbClient.from('zip_tracker').update({ notes: z.notes }).eq('zip', zip);
   if (neighborhood !== '') q = q.eq('neighborhood', neighborhood);
   const { error } = await q;
@@ -1074,7 +1122,8 @@ function resetForm() {
 function editZip(key) {
   const z = db.zips[key];
   if (!z) return;
-  const { zip, neighborhood } = parseKey(key);
+  const zip = z.zip || parseKey(key).zip;
+  const neighborhood = z.neighborhood || '';
   const latest = z.history[z.history.length-1];
   editingKey = key;
   const titleLabel = neighborhood ? (zip + ' — ' + neighborhood) : zip;
@@ -1374,24 +1423,17 @@ async function saveZip() {
   const zip = (document.getElementById('f-zip').value||'').trim();
   const neighborhood = (document.getElementById('f-neighborhood').value||'').trim();
   if (!zip) { alert('Enter a zip code'); return; }
-  const key = makeKey(zip, neighborhood);
+  const key = makeKey(zip); // ZIP-only key; one ZIP = one record
 
-  // If the user changed the neighborhood while editing, the key changes too.
-  // Migrate the existing record (history + meta) to the new key and remove the old one.
-  const oldKey = editingKey; // remember this for Supabase cleanup at the end
-  const keyChanged = editingKey && editingKey !== key && db.zips[editingKey];
-  if (keyChanged) {
-    // Prevent overwriting a different existing record by accident
-    if (db.zips[key]) {
-      const proceed = confirm('A record already exists for ' + zip + (neighborhood ? ' — ' + neighborhood : '') + '.\n\nClick OK to overwrite it, or Cancel to pick a different neighborhood name.');
-      if (!proceed) return;
-    }
-    // Move the old record to the new key so history and notes survive
-    db.zips[key] = db.zips[editingKey];
-    db.zips[key].zip = zip;
-    db.zips[key].neighborhood = neighborhood;
-    delete db.zips[editingKey];
+  // Under the new "one ZIP = one record" rule, the key doesn't change during edit
+  // (zip is disabled on the form). But the NEIGHBORHOOD LABEL can change, and a
+  // stale Supabase row for (zip, oldNeighborhood) would sync back as a duplicate.
+  // Track the old neighborhood so we can clean up that Supabase row after saving.
+  let oldNeighborhood = '';
+  if (editingKey && db.zips[editingKey]) {
+    oldNeighborhood = normalizeNeighborhood(db.zips[editingKey].neighborhood);
   }
+  const neighborhoodChanged = editingKey && oldNeighborhood !== normalizeNeighborhood(neighborhood);
 
   // Backup confirmation when overwriting an existing ZIP
   const isOverwrite = editingKey && db.zips[key] && db.zips[key].history && db.zips[key].history.length > 0;
@@ -1449,10 +1491,11 @@ async function saveZip() {
   saveLocal();
   setSyncStatus('syncing');
   await upsertToSupabase(key);
-  // If the neighborhood changed, the record now lives under a new key.
-  // Remove the old row from Supabase so the database stays in sync with local state.
-  if (keyChanged && oldKey && oldKey !== key) {
-    await deleteFromSupabase(oldKey);
+  // If the neighborhood LABEL changed during this edit, a stale Supabase row
+  // may still exist for the old (zip, oldNeighborhood) combo. Clean it up
+  // so the next sync doesn't re-hydrate a duplicate.
+  if (neighborhoodChanged) {
+    await deleteSupabaseRowByZipNeighborhood(zip, oldNeighborhood);
   }
   toast('Saved!');
   showPage('dashboard');
@@ -1460,7 +1503,9 @@ async function saveZip() {
 
 async function deleteZip() {
   if (!editingKey) return;
-  const { zip, neighborhood } = parseKey(editingKey);
+  const rec = db.zips[editingKey] || {};
+  const zip = rec.zip || parseKey(editingKey).zip;
+  const neighborhood = rec.neighborhood || '';
   const label = neighborhood ? (zip + ' — ' + neighborhood) : zip;
   const typed = prompt('Delete ' + label + '?\n\nThis cannot be undone.\nType DELETE (all caps) to confirm:');
   if (typed !== 'DELETE') {
