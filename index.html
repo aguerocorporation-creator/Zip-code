@@ -27,11 +27,18 @@ header span{font-size:12px;color:#aaa}
 
 /* Dashboard */
 .zip-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;margin-bottom:1.5rem}
-.zip-card{background:#fff;border-radius:12px;border:1px solid #e0e0e0;padding:1.25rem;cursor:pointer;transition:border-color 0.15s}
+.zip-card{background:#fff;border-radius:12px;border:1px solid #e0e0e0;padding:1.25rem;cursor:pointer;transition:border-color 0.15s;position:relative}
 .zip-card:hover{border-color:#888}
+.zip-card.is-neighborhood{border-left:4px solid #6f42c1}
 .zip-card-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px}
 .zip-num{font-size:22px;font-weight:700;color:#1a1a1a}
-.zip-neighborhood{font-size:12px;color:#666;margin-top:2px;font-weight:500}
+.zip-neighborhood{font-size:12px;color:#666;margin-top:2px;font-weight:500;display:flex;align-items:center;gap:6px}
+.area-dot{display:inline-block;width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.area-dot.neighborhood{background:#6f42c1}
+.area-dot.zip{background:#1e8449}
+.area-subtitle{font-size:11px;color:#888;margin-top:2px;font-weight:500;letter-spacing:0.02em;text-transform:uppercase}
+.area-subtitle.neighborhood{color:#6f42c1}
+.area-subtitle.zip{color:#1e8449}
 .zip-role{font-size:11px;padding:3px 10px;border-radius:20px;font-weight:600}
 .role-1{background:#FFF3CD;color:#856404}
 .role-2{background:#D1ECF1;color:#0c5460}
@@ -72,8 +79,9 @@ header span{font-size:12px;color:#aaa}
 .back-btn{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:#666;cursor:pointer;margin-bottom:1rem;border:1px solid #e0e0e0;background:#fff;border-radius:8px;padding:6px 12px}
 .back-btn:hover{color:#1a1a1a}
 .detail-header{background:#fff;border-radius:12px;border:1px solid #e0e0e0;padding:1.25rem;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}
+.detail-header.is-neighborhood{border-left:4px solid #6f42c1}
 .detail-zip{font-size:28px;font-weight:700}
-.detail-neighborhood{font-size:14px;color:#666;margin-top:2px;font-weight:500}
+.detail-neighborhood{font-size:14px;color:#666;margin-top:2px;font-weight:500;display:flex;align-items:center;gap:6px}
 .detail-role{font-size:13px;color:#888;margin-top:4px}
 .metrics-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-bottom:12px}
 .metric-card{background:#fff;border-radius:10px;border:1px solid #e0e0e0;padding:1rem}
@@ -114,6 +122,7 @@ header span{font-size:12px;color:#aaa}
 .form-field label{font-size:11px;color:#888;font-weight:500}
 .form-field input,.form-field select,.form-field textarea{border:1px solid #e0e0e0;border-radius:8px;padding:8px 10px;font-size:13px;font-family:inherit;color:#1a1a1a;background:#fff}
 .form-field input:focus,.form-field select:focus{outline:none;border-color:#888}
+.form-field input:disabled{background:#f5f5f5;color:#aaa;cursor:not-allowed}
 .form-field textarea{resize:vertical;min-height:60px}
 .form-actions{display:flex;gap:8px;flex-wrap:wrap}
 .btn-primary{background:#1a1a1a;color:#fff;border:none;border-radius:8px;padding:8px 18px;font-size:13px;font-weight:500;cursor:pointer;font-family:inherit}
@@ -170,6 +179,9 @@ header span{font-size:12px;color:#aaa}
 .mkt-summary{font-size:13px;color:#444;line-height:1.6;padding:10px 12px;background:#f8f8f8;border-radius:8px;margin-top:8px}
 .calc-display{background:#f8f8f8;border:1px solid #e8e8e8;border-radius:8px;padding:8px 10px;font-size:13px;color:#555;font-weight:500;min-height:36px;display:flex;align-items:center}
 .auto-label{font-size:10px;background:#e8f5ee;color:#155724;border-radius:10px;padding:1px 6px;font-weight:600;margin-left:4px}
+.area-type-pill{font-size:10px;padding:2px 8px;border-radius:20px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
+.area-type-pill.zip{background:#e8f5ee;color:#155724}
+.area-type-pill.neighborhood{background:#f0e8fa;color:#5a32a3}
 .form-field label{display:flex;align-items:center;gap:4px}
 
 /* MOBILE */
@@ -223,7 +235,7 @@ header span{font-size:12px;color:#aaa}
         <button class="btn-secondary" style="font-size:12px;padding:7px 10px;text-align:left" onclick="downloadJSONBackup()">⬇ Download JSON Backup</button>
         <button class="btn-secondary" style="font-size:12px;padding:7px 10px;text-align:left" onclick="triggerJSONImport()">⬆ Import JSON Backup</button>
         <button class="btn-secondary" style="font-size:12px;padding:7px 10px;text-align:left" onclick="restoreLastBackup()">↺ Restore Last Backup</button>
-        <button class="btn-secondary" style="font-size:12px;padding:7px 10px;text-align:left" onclick="cleanDuplicateZips()">⚑ Clean Duplicate ZIPs</button>
+        <button class="btn-secondary" style="font-size:12px;padding:7px 10px;text-align:left" onclick="cleanDuplicateZips()">⚑ Clean Duplicate Records</button>
       </div>
       <input type="file" id="json-import-file" accept="application/json,.json" style="display:none" onchange="importJSONBackup(event)">
     </div>
@@ -233,7 +245,7 @@ header span{font-size:12px;color:#aaa}
 <div class="tabs" id="tabs">
   <div class="tab active" onclick="showPage('dashboard')">Dashboard</div>
   <div class="tab" onclick="showPage('ranking')">Rankings</div>
-  <div class="tab-add" onclick="startNewZip()" title="Add zip code">+</div>
+  <div class="tab-add" onclick="startNewZip()" title="Add record">+</div>
 </div>
 
 <!-- DASHBOARD -->
@@ -258,10 +270,16 @@ header span{font-size:12px;color:#aaa}
 <!-- ADD ZIP -->
 <div class="page" id="page-add">
   <div class="form-card">
-    <h3 id="form-title">Add new zip code</h3>
+    <h3 id="form-title">Add new record</h3>
     <div class="form-grid">
+      <div class="form-field"><label>Area type</label>
+        <select id="f-area-type" onchange="onAreaTypeChange()">
+          <option value="zip">Whole ZIP</option>
+          <option value="neighborhood">Neighborhood inside ZIP</option>
+        </select>
+      </div>
       <div class="form-field"><label>Zip code</label><input type="text" id="f-zip" placeholder="e.g. 40214" maxlength="5"/></div>
-      <div class="form-field"><label>Neighborhood</label><input type="text" id="f-neighborhood" placeholder="Pleasure Ridge Park"/></div>
+      <div class="form-field"><label id="f-neighborhood-label">Neighborhood</label><input type="text" id="f-neighborhood" placeholder="Parkwood"/></div>
       <div class="form-field"><label>Role / strategy</label>
         <select id="f-role">
           <option value="Main focus">Main focus</option>
@@ -297,7 +315,7 @@ header span{font-size:12px;color:#aaa}
         <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">
           <div>
             <div class="market-read-top">
-              <div><div class="mkt-score" id="mkt-zip-score">—</div><div class="mkt-score-label">Weekly ZIP score / 10</div></div>
+              <div><div class="mkt-score" id="mkt-zip-score">—</div><div class="mkt-score-label">Weekly score / 10</div></div>
               <span class="mkt-badge" id="mkt-status-badge">—</span>
               <span class="mkt-badge" id="mkt-action-badge">—</span>
             </div>
@@ -307,10 +325,10 @@ header span{font-size:12px;color:#aaa}
       </div>
     </div>
     <div class="form-actions">
-      <button class="btn-primary" onclick="saveZip()">Save zip code</button>
-      <button class="btn-pdf" id="pdf-btn" style="display:none" onclick="downloadCurrentZipPDF()">📄 Download Current ZIP PDF</button>
+      <button class="btn-primary" onclick="saveZip()">Save record</button>
+      <button class="btn-pdf" id="pdf-btn" style="display:none" onclick="downloadCurrentZipPDF()">📄 Download PDF</button>
       <button class="btn-secondary" onclick="showPage('dashboard')">Cancel</button>
-      <button class="btn-danger" id="delete-btn" style="display:none" onclick="deleteZip()">Delete zip</button>
+      <button class="btn-danger" id="delete-btn" style="display:none" onclick="deleteZip()">Delete</button>
     </div>
   </div>
 </div>
@@ -330,14 +348,15 @@ const SB_KEY_KEY = 'ziptracker_sb_key';
 const DB_KEY     = 'ziptracker_v2';
 let sbClient = null;
 let db = { zips: {} };
-let editingKey = null; // combined key: "zip|neighborhood"
-let currentDetailKey = null; // tracks which ZIP is open on the detail page
+let editingKey = null;
+let currentDetailKey = null;
+
+// ── AREA TYPES ───────────────────────────────────────────
+const AREA_ZIP = 'zip';
+const AREA_NB  = 'neighborhood';
 
 // ── KEY HELPERS ──────────────────────────────────────────
-// ── KEY NORMALIZATION ────────────────────────────────────
-// Treat null, undefined, the literal strings "null"/"undefined", and whitespace-only
-// values as an empty neighborhood. This is the single source of truth for keys —
-// everywhere else must pass values through here before building a key.
+// Treat null/undefined/whitespace-only/"null"/"undefined" strings as empty.
 function normalizeZip(zip) {
   if (zip === null || zip === undefined) return '';
   return String(zip).trim();
@@ -348,21 +367,63 @@ function normalizeNeighborhood(nb) {
   if (s === '' || s.toLowerCase() === 'null' || s.toLowerCase() === 'undefined') return '';
   return s;
 }
-// KEY RULE: one ZIP = one record. The key is the ZIP code only.
-// Neighborhood is a display label stored inside the record (z.neighborhood),
-// not part of the key. The second argument is accepted for backward compatibility
-// with existing call sites but is intentionally ignored.
-function makeKey(zip, _neighborhood) {
-  return normalizeZip(zip);
+function normalizeAreaType(t) {
+  const s = String(t || '').trim().toLowerCase();
+  if (s === AREA_NB || s === 'neighborhood') return AREA_NB;
+  return AREA_ZIP;
 }
-// parseKey is kept for backward compatibility. New keys are ZIP-only so it
-// always returns neighborhood:''. Legacy keys of the form "zip|neighborhood"
-// still parse correctly — callers should fall back to z.neighborhood for the
-// label, which every record carries.
+
+// KEY RULE (NEW):
+//   Whole-ZIP record:    key = "zip:40214"
+//   Neighborhood record: key = "neighborhood:40214:Parkwood"
+// Different neighborhoods inside the same ZIP get different keys.
+// A whole-ZIP record and a neighborhood inside it get different keys.
+// Neighborhood is case- and whitespace-normalized for the key only — the record
+// itself stores the original-case neighborhood label for display.
+function makeKey(zip, neighborhood, areaType) {
+  const z = normalizeZip(zip);
+  const t = normalizeAreaType(areaType);
+  if (t === AREA_NB) {
+    const nb = normalizeNeighborhood(neighborhood);
+    // Lowercase + collapse internal whitespace for key stability. This way
+    // "Parkwood" / "parkwood" / "Parkwood " all collapse to one key, but the
+    // original casing the user typed is preserved on the record itself.
+    const nbKey = nb.toLowerCase().replace(/\s+/g, ' ');
+    return 'neighborhood:' + z + ':' + nbKey;
+  }
+  return 'zip:' + z;
+}
+
+// parseKey understands three key shapes:
+//   1. "zip:40214"                       → new whole-ZIP
+//   2. "neighborhood:40214:Parkwood"     → new neighborhood
+//   3. "40214" or "40214|Parkwood"       → LEGACY (pre-areaType)
+// For legacy keys, areaType is inferred from whether a neighborhood segment exists.
+// Callers should always prefer the record's own fields (z.zip, z.neighborhood,
+// z.areaType) when available; parseKey is a fallback for orphan keys.
 function parseKey(key) {
-  const idx = key.indexOf('|');
-  if (idx === -1) return { zip: key, neighborhood: '' };
-  return { zip: key.substring(0, idx), neighborhood: key.substring(idx + 1) };
+  if (typeof key !== 'string') return { zip: '', neighborhood: '', areaType: AREA_ZIP };
+  if (key.indexOf('zip:') === 0) {
+    return { zip: key.substring(4), neighborhood: '', areaType: AREA_ZIP };
+  }
+  if (key.indexOf('neighborhood:') === 0) {
+    const rest = key.substring('neighborhood:'.length);
+    const colonIdx = rest.indexOf(':');
+    if (colonIdx === -1) return { zip: rest, neighborhood: '', areaType: AREA_NB };
+    return {
+      zip: rest.substring(0, colonIdx),
+      neighborhood: rest.substring(colonIdx + 1),
+      areaType: AREA_NB
+    };
+  }
+  // Legacy fallthrough
+  const pipeIdx = key.indexOf('|');
+  if (pipeIdx === -1) return { zip: key, neighborhood: '', areaType: AREA_ZIP };
+  return {
+    zip: key.substring(0, pipeIdx),
+    neighborhood: key.substring(pipeIdx + 1),
+    areaType: AREA_NB
+  };
 }
 
 // ── LOCAL STORAGE ────────────────────────────────────────
@@ -378,11 +439,10 @@ function saveLocal() {
 
 // ── LOCAL BACKUPS (data-safety layer) ────────────────────
 const BACKUP_PREFIX = 'ziptracker_backup_';
-const MAX_BACKUPS = 10; // keep the 10 most recent automatic backups
+const MAX_BACKUPS = 10;
 
 function createBackup(reason) {
   try {
-    // Don't waste a backup slot on an empty db
     if (!db || !db.zips || Object.keys(db.zips).length === 0) return null;
     const timestamp = new Date().toISOString();
     const key = BACKUP_PREFIX + timestamp + (reason ? '__' + reason.replace(/[^a-zA-Z0-9_-]/g,'') : '');
@@ -390,7 +450,6 @@ function createBackup(reason) {
     pruneOldBackups();
     return key;
   } catch(e) {
-    // quota exceeded, ignore silently — safety backup is best-effort
     return null;
   }
 }
@@ -401,7 +460,6 @@ function listBackups() {
     const k = localStorage.key(i);
     if (k && k.indexOf(BACKUP_PREFIX) === 0) keys.push(k);
   }
-  // Newest first — the timestamp is lexicographically sortable
   return keys.sort().reverse();
 }
 
@@ -420,7 +478,6 @@ function restoreLastBackup() {
   const latest = all[0];
   const confirmMsg = 'Restore the most recent local backup?\n\nBackup: ' + latest.replace(BACKUP_PREFIX,'').slice(0,19) + '\n\nThis will replace your current app state. A safety snapshot will be taken first.';
   if (!confirm(confirmMsg)) return;
-  // Take a snapshot of the current state before overwriting, just in case
   createBackup('pre_restore');
   try {
     const raw = localStorage.getItem(latest);
@@ -430,9 +487,11 @@ function restoreLastBackup() {
       return;
     }
     db = restored;
+    migrateLegacyKeys();
+    dedupeZipRecords();
     saveLocal();
     renderDashboard();
-    toast('Restored ' + Object.keys(db.zips).length + ' ZIPs from backup');
+    toast('Restored ' + Object.keys(db.zips).length + ' records from backup');
   } catch(e) {
     alert('Failed to restore backup: ' + e.message);
   }
@@ -442,7 +501,7 @@ function downloadJSONBackup() {
   const payload = {
     exported_at: new Date().toISOString(),
     app: 'ziptracker',
-    version: 2,
+    version: 3,
     data: db
   };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
@@ -471,7 +530,6 @@ function importJSONBackup(event) {
   reader.onload = function(e) {
     try {
       const parsed = JSON.parse(e.target.result);
-      // Accept either { data: { zips: {...} } } or { zips: {...} } at the top level
       const incoming = parsed && parsed.data && parsed.data.zips ? parsed.data
                      : parsed && parsed.zips                    ? parsed
                      : null;
@@ -481,52 +539,137 @@ function importJSONBackup(event) {
       }
       const incomingCount = Object.keys(incoming.zips).length;
       const currentCount  = db && db.zips ? Object.keys(db.zips).length : 0;
-      const msg = 'Import ' + incomingCount + ' ZIPs from file?\n\n' +
+      const msg = 'Import ' + incomingCount + ' records from file?\n\n' +
                   'Choose how to handle existing data:\n' +
-                  '• OK = MERGE (keep current ZIPs, add/update from file)\n' +
+                  '• OK = MERGE (keep current records, add/update from file)\n' +
                   '• Cancel = abort import\n\n' +
-                  'Current local ZIPs: ' + currentCount + '\n' +
-                  'File ZIPs: ' + incomingCount;
+                  'Current local records: ' + currentCount + '\n' +
+                  'File records: ' + incomingCount;
       if (!confirm(msg)) return;
-      // Safety backup before touching anything
       createBackup('pre_import');
-      // Merge: incoming wins per-key, but untouched local keys survive
-      Object.keys(incoming.zips).forEach(k => {
-        db.zips[k] = incoming.zips[k];
+      // Stage incoming records under unique temporary keys so collisions don't
+      // silently drop history. Two legacy keys (e.g. "40214" and "40214|") that
+      // both canonicalize to "zip:40214" must BOTH reach dedupeZipRecords —
+      // it's the only function with bucket-and-merge logic that combines
+      // histories instead of overwriting. We use a __import_<n>__ prefix to
+      // guarantee no collision with existing local keys.
+      let importCounter = 0;
+      Object.keys(incoming.zips).forEach(oldKey => {
+        const rec = incoming.zips[oldKey];
+        // canonicalizeRecord normalizes the record's areaType/zip/neighborhood
+        // fields. The temporary key is just a holding slot — dedupeZipRecords
+        // re-keys everything from the record fields anyway.
+        const { normalized } = canonicalizeRecord(oldKey, rec);
+        const stagingKey = '__import_' + (importCounter++) + '__' + oldKey;
+        db.zips[stagingKey] = normalized;
       });
-      // Import may re-introduce duplicates (e.g. old file had both "40216|" and
-      // "40216| " records). Run dedupe to normalize before saving.
+      // dedupeZipRecords groups by canonical key built from the record fields,
+      // merging histories non-destructively across all staged + existing records.
       dedupeZipRecords();
       saveLocal();
       renderDashboard();
-      toast('Imported — now ' + Object.keys(db.zips).length + ' ZIPs total');
+      toast('Imported — now ' + Object.keys(db.zips).length + ' records total');
     } catch(err) {
       alert('Could not read the backup file: ' + err.message);
     } finally {
-      // Reset input so selecting the same file twice still fires change
       event.target.value = '';
     }
   };
   reader.readAsText(file);
 }
 
-function migrateLegacyKeys() {
-  // Kept as a no-op for call-site compatibility. Under the "one ZIP = one record"
-  // rule, dedupeZipRecords() (called immediately after this) handles all legacy
-  // key forms — pipeless keys, "zip|neighborhood" composite keys, and whitespace
-  // variants all collapse to a single canonical ZIP-only key.
-  return;
+// canonicalizeRecord takes any (oldKey, record) pair — legacy or new — and
+// returns the canonical { newKey, normalized } pair under the v3 scheme.
+//
+// Migration rules:
+//   - If record has explicit areaType, trust it.
+//   - Else: if neighborhood field is non-empty OR oldKey is a legacy "zip|nb"
+//     composite, treat as neighborhood-level.
+//   - Else: whole-ZIP.
+//
+// The returned `normalized` record always has zip, neighborhood, and areaType
+// set, plus all other fields preserved (history, notes, works, doesnt, role,
+// distress).
+function canonicalizeRecord(oldKey, record) {
+  const r = record || {};
+  const parsed = parseKey(oldKey);
+
+  const zip = normalizeZip(r.zip || parsed.zip);
+  // Prefer the record's own neighborhood field; fall back to whatever the
+  // legacy key encoded.
+  const neighborhood = normalizeNeighborhood(r.neighborhood || parsed.neighborhood);
+
+  let areaType;
+  if (r.areaType) {
+    areaType = normalizeAreaType(r.areaType);
+  } else if (neighborhood) {
+    // No explicit areaType but a neighborhood label is present → it's a nb.
+    areaType = AREA_NB;
+  } else if (parsed.areaType === AREA_NB) {
+    // Legacy "zip|nb" key with nb stripped to empty by normalization — extremely
+    // unlikely, but treat as ZIP for safety since there's no nb left to key on.
+    areaType = AREA_ZIP;
+  } else {
+    areaType = AREA_ZIP;
+  }
+
+  // For neighborhood records we need a non-empty neighborhood. If somehow we
+  // ended up flagged as nb but with no label, demote to whole-ZIP rather than
+  // silently dropping the record.
+  if (areaType === AREA_NB && !neighborhood) {
+    areaType = AREA_ZIP;
+  }
+
+  const normalized = {
+    zip,
+    neighborhood: areaType === AREA_NB ? neighborhood : '',
+    areaType,
+    role:     r.role     || '',
+    distress: r.distress || 'Moderate',
+    works:    r.works    || '',
+    doesnt:   r.doesnt   || '',
+    notes:    r.notes    || '',
+    history:  Array.isArray(r.history) ? r.history.slice() : []
+  };
+
+  const newKey = makeKey(zip, normalized.neighborhood, areaType);
+  return { newKey, normalized };
 }
 
-// ── DEDUPE ZIP RECORDS ───────────────────────────────────
-// Groups all records by their NORMALIZED key (zip + neighborhood). When two or
-// more records collapse to the same normalized key, merges them non-destructively:
-//   - history entries are combined, deduped by a fingerprint (isoDate first,
-//     otherwise date+active+pending+sold), then sorted chronologically
-//   - notes/works/doesnt pick the longest non-empty value across duplicates
-//   - role/distress prefer the first non-empty value
-// History is NEVER dropped — every unique weekly entry survives. Safe to run
-// any number of times; an already-clean db is left unchanged.
+// migrateLegacyKeys: ensures every record has its `zip`, `neighborhood`, and
+// `areaType` fields populated correctly so dedupeZipRecords can do the actual
+// re-keying. We deliberately DO NOT re-key here — if two legacy keys collapse
+// to the same canonical key, merging their histories is dedupe's job. Doing
+// the re-key in this function would force us to either drop one record or
+// re-implement the merge logic, both of which are bug-prone.
+//
+// Idempotent: running it on an already-migrated db is a no-op (records already
+// have areaType set, so canonicalizeRecord just normalizes their fields).
+function migrateLegacyKeys() {
+  if (!db || !db.zips) return;
+  Object.keys(db.zips).forEach(key => {
+    const rec = db.zips[key];
+    if (!rec) return;
+    // canonicalizeRecord handles every legacy variant: it figures out the
+    // right zip/neighborhood/areaType based on the record fields and the
+    // shape of the key. We only adopt the normalized FIELDS here, not the
+    // newKey — dedupeZipRecords will handle the re-keying and any merges.
+    const { normalized } = canonicalizeRecord(key, rec);
+    rec.zip          = normalized.zip;
+    rec.neighborhood = normalized.neighborhood;
+    rec.areaType     = normalized.areaType;
+    if (!rec.role)     rec.role     = normalized.role     || 'Main focus';
+    if (!rec.distress) rec.distress = normalized.distress || 'Moderate';
+    if (!Array.isArray(rec.history)) rec.history = [];
+  });
+}
+
+// dedupeZipRecords: collapses records that share the SAME canonical key.
+// Under the v3 scheme this means:
+//   - "zip:40214" only merges with another "zip:40214"
+//   - "neighborhood:40214:parkwood" only merges with another "neighborhood:40214:parkwood"
+//   - A whole-ZIP and a neighborhood inside it NEVER merge.
+//   - Two different neighborhoods inside the same ZIP NEVER merge.
 function dedupeZipRecords() {
   if (!db || !db.zips) return 0;
 
@@ -549,64 +692,40 @@ function dedupeZipRecords() {
     return b;
   };
 
-  // Bucket every existing record under its canonical ZIP-only key.
-  // Two records with the same ZIP but different neighborhoods WILL merge —
-  // this is intentional. One ZIP = one card.
-  const groups = {}; // canonicalKey(zip) -> array of { originalKey, record, candidateNeighborhood }
+  // Group by canonical key. Records that resolve to the same canonical key
+  // (after normalization) get merged; everything else stays separate.
+  const groups = {};
   Object.keys(db.zips).forEach(originalKey => {
-    const record = db.zips[originalKey];
-    const parsed = parseKey(originalKey);
-    const zip           = normalizeZip(record.zip || parsed.zip);
-    // Collect the neighborhood candidate from both record field and parsed key,
-    // so legacy "zip|neighborhood" keys still contribute their label.
-    const fromRecord    = normalizeNeighborhood(record.neighborhood);
-    const fromKey       = normalizeNeighborhood(parsed.neighborhood);
-    const candidateNeighborhood = fromRecord || fromKey || '';
-    const canonical     = zip; // ZIP-only key
-    if (!groups[canonical]) groups[canonical] = [];
-    groups[canonical].push({ originalKey, record, canonicalZip: zip, candidateNeighborhood });
+    const rec = db.zips[originalKey];
+    const { newKey, normalized } = canonicalizeRecord(originalKey, rec);
+    if (!groups[newKey]) groups[newKey] = [];
+    groups[newKey].push({ originalKey, normalized });
   });
 
-  // Rebuild db.zips from the groups.
   const rebuilt = {};
   let mergesPerformed = 0;
 
   Object.keys(groups).forEach(canonical => {
     const bucket = groups[canonical];
-    const canonicalZip = bucket[0].canonicalZip;
-
-    // Pick the longest non-empty neighborhood label across the whole bucket.
-    // This is the display name that wins.
-    let canonicalNb = '';
-    bucket.forEach(item => {
-      if (item.candidateNeighborhood && item.candidateNeighborhood.length > canonicalNb.length) {
-        canonicalNb = item.candidateNeighborhood;
-      }
-    });
 
     if (bucket.length === 1) {
-      // Single record — re-home it under the ZIP-only key, normalize its fields.
-      const r = bucket[0].record;
-      r.zip = canonicalZip;
-      r.neighborhood = canonicalNb;
-      if (!Array.isArray(r.history)) r.history = [];
-      rebuilt[canonical] = r;
+      rebuilt[canonical] = bucket[0].normalized;
       return;
     }
 
-    // Multiple records collapse into one. Prefer the record whose original key already
-    // matched the canonical ZIP — that's most likely the "real" one, and putting it
-    // first means its metadata wins ties.
     mergesPerformed += (bucket.length - 1);
+    // Prefer the record whose original key was already the canonical key.
     bucket.sort((a, b) => {
       const aMatch = a.originalKey === canonical ? 0 : 1;
       const bMatch = b.originalKey === canonical ? 0 : 1;
       return aMatch - bMatch;
     });
 
+    const first = bucket[0].normalized;
     const merged = {
-      zip: canonicalZip,
-      neighborhood: canonicalNb,
+      zip: first.zip,
+      neighborhood: first.neighborhood,
+      areaType: first.areaType,
       role: '',
       distress: '',
       works: '',
@@ -615,9 +734,12 @@ function dedupeZipRecords() {
       history: []
     };
 
-    // Combine metadata safely.
     bucket.forEach(item => {
-      const r = item.record || {};
+      const r = item.normalized;
+      // Prefer a longer/non-empty neighborhood label so we keep original casing.
+      if (r.neighborhood && r.neighborhood.length > merged.neighborhood.length) {
+        merged.neighborhood = r.neighborhood;
+      }
       merged.role     = pickFirstNonEmpty(merged.role,     r.role);
       merged.distress = pickFirstNonEmpty(merged.distress, r.distress);
       merged.works    = pickLongest(merged.works,    r.works);
@@ -625,10 +747,9 @@ function dedupeZipRecords() {
       merged.notes    = pickLongest(merged.notes,    r.notes);
     });
 
-    // Combine histories, deduping by fingerprint.
     const seenFingerprints = new Set();
     bucket.forEach(item => {
-      const hist = (item.record && Array.isArray(item.record.history)) ? item.record.history : [];
+      const hist = Array.isArray(item.normalized.history) ? item.normalized.history : [];
       hist.forEach(entry => {
         const fp = fingerprint(entry);
         if (seenFingerprints.has(fp)) return;
@@ -637,7 +758,6 @@ function dedupeZipRecords() {
       });
     });
 
-    // Chronological sort, oldest first. Entries missing isoDate fall to the end.
     merged.history.sort((a, b) => {
       const aIso = String((a && a.isoDate) || '');
       const bIso = String((b && b.isoDate) || '');
@@ -646,7 +766,6 @@ function dedupeZipRecords() {
       return aIso.localeCompare(bIso);
     });
 
-    // Fill in any still-empty metadata with safe defaults.
     if (!merged.role)     merged.role     = 'Main focus';
     if (!merged.distress) merged.distress = 'Moderate';
 
@@ -659,9 +778,8 @@ function dedupeZipRecords() {
 
 function cleanDuplicateZips() {
   const before = Object.keys(db.zips).length;
-  // Take a safety snapshot before touching anything — dedupe is destructive in
-  // the sense that keys disappear, even though history is preserved.
   createBackup('pre_dedupe');
+  migrateLegacyKeys();
   const merges = dedupeZipRecords();
   const after = Object.keys(db.zips).length;
   saveLocal();
@@ -669,7 +787,7 @@ function cleanDuplicateZips() {
   if (merges === 0 && before === after) {
     toast('No duplicates found — your data is clean');
   } else {
-    toast('Cleaned: ' + before + ' → ' + after + ' ZIPs (' + merges + ' duplicates merged)');
+    toast('Cleaned: ' + before + ' → ' + after + ' records (' + merges + ' duplicates merged)');
   }
 }
 
@@ -746,6 +864,12 @@ function disconnectSupabase() {
 }
 
 // ── SUPABASE CRUD ────────────────────────────────────────
+// Schema note: this app sends `area_type` to Supabase. If the column doesn't
+// exist, upserts will fail and we fall back to legacy upserts (which collapse
+// neighborhoods into whole-ZIP rows). For the new model to work end-to-end,
+// add this column to the zip_tracker table:
+//   area_type text not null default 'zip'
+// And update the unique constraint to (zip, neighborhood, area_type).
 async function loadFromSupabase() {
   if (!sbClient) return;
   const { data, error } = await sbClient.from('zip_tracker').select('*');
@@ -754,30 +878,29 @@ async function loadFromSupabase() {
   const rows = data || [];
   const localKeyCount = db && db.zips ? Object.keys(db.zips).length : 0;
 
-  // SAFETY RULE 1: Never wipe local data because Supabase came back empty.
   if (rows.length === 0) {
     if (localKeyCount > 0) {
       toast('Supabase has no records. Keeping local data safe.');
     }
-    // Nothing to merge; leave db.zips untouched.
     return;
   }
 
-  // SAFETY RULE 2: Always back up before we accept remote data.
   createBackup('pre_sync');
 
-  // SAFETY RULE 3: Merge — do not replace. Existing local-only ZIPs survive.
-  // With the new one-ZIP=one-record rule, multiple Supabase rows for the same
-  // ZIP (e.g. different neighborhood values) all collapse onto the same local
-  // key. We carefully preserve the best neighborhood label across all rows.
   rows.forEach(row => {
-    const rowNeighborhood = normalizeNeighborhood(row.neighborhood);
-    const key = makeKey(row.zip); // ZIP-only
+    const rowZip = normalizeZip(row.zip);
+    const rowNb  = normalizeNeighborhood(row.neighborhood);
+    // Prefer the row's own area_type; fall back to inferring from neighborhood.
+    const rowAreaType = row.area_type
+      ? normalizeAreaType(row.area_type)
+      : (rowNb ? AREA_NB : AREA_ZIP);
+    const key = makeKey(rowZip, rowNb, rowAreaType);
 
     if (!db.zips[key]) {
       db.zips[key] = {
-        zip: row.zip,
-        neighborhood: rowNeighborhood,
+        zip: rowZip,
+        neighborhood: rowAreaType === AREA_NB ? rowNb : '',
+        areaType: rowAreaType,
         role: row.role || '',
         distress: row.distress || 'Moderate',
         works: row.works || '',
@@ -787,8 +910,6 @@ async function loadFromSupabase() {
       };
     }
 
-    // Merge history without creating duplicates. Match by isoDate if present,
-    // otherwise by a date+active+pending+sold fingerprint.
     if (row.entry_data) {
       const incoming = row.entry_data;
       const fingerprint = (e) => (e && (e.isoDate || (String(e.date||'') + '|' + e.active + '|' + e.pending + '|' + e.sold))) || '';
@@ -797,19 +918,21 @@ async function loadFromSupabase() {
       const alreadyThere = existing.some(h => fingerprint(h) === incomingFp);
       if (!alreadyThere) {
         db.zips[key].history.push(incoming);
-        // Keep history chronological when possible
         db.zips[key].history.sort((a,b) => String(a.isoDate||'').localeCompare(String(b.isoDate||'')));
       }
     }
 
-    // Update metadata fields from Supabase, but DON'T clobber a good neighborhood
-    // label with an empty or shorter one from a duplicate row.
-    db.zips[key].zip = row.zip;
-    const currentNb = normalizeNeighborhood(db.zips[key].neighborhood);
-    if (rowNeighborhood && rowNeighborhood.length > currentNb.length) {
-      db.zips[key].neighborhood = rowNeighborhood;
-    } else if (!currentNb && rowNeighborhood) {
-      db.zips[key].neighborhood = rowNeighborhood;
+    db.zips[key].zip = rowZip;
+    db.zips[key].areaType = rowAreaType;
+    if (rowAreaType === AREA_NB) {
+      const currentNb = normalizeNeighborhood(db.zips[key].neighborhood);
+      if (rowNb && rowNb.length > currentNb.length) {
+        db.zips[key].neighborhood = rowNb;
+      } else if (!currentNb && rowNb) {
+        db.zips[key].neighborhood = rowNb;
+      }
+    } else {
+      db.zips[key].neighborhood = '';
     }
     if (row.role     !== undefined && row.role !== null)     db.zips[key].role     = row.role;
     if (row.distress !== undefined && row.distress !== null) db.zips[key].distress = row.distress;
@@ -818,7 +941,8 @@ async function loadFromSupabase() {
     if (row.notes    !== undefined && row.notes !== null)    db.zips[key].notes    = row.notes;
   });
 
-  // Final safety net: run dedupe in case any legacy composite keys slipped in.
+  // Final safety net: ensure all keys are canonical.
+  migrateLegacyKeys();
   dedupeZipRecords();
   saveLocal();
 }
@@ -826,22 +950,41 @@ async function loadFromSupabase() {
 async function upsertToSupabase(key) {
   if (!sbClient) return;
   const z = db.zips[key];
+  if (!z) return;
   const latest = z.history[z.history.length - 1];
   const payload = {
     zip: z.zip,
-    neighborhood: z.neighborhood || '',
+    neighborhood: z.areaType === AREA_NB ? (z.neighborhood || '') : '',
+    area_type: z.areaType || AREA_ZIP,
     role: z.role, distress: z.distress,
     works: z.works, doesnt: z.doesnt, notes: z.notes,
     entry_data: latest,
     updated_at: new Date().toISOString()
   };
-  let { error } = await sbClient.from('zip_tracker').upsert(payload, { onConflict: 'zip,neighborhood' });
+  // Preferred conflict target includes area_type so a whole-ZIP row and a
+  // neighborhood row inside the same ZIP can coexist.
+  let { error } = await sbClient.from('zip_tracker').upsert(payload, { onConflict: 'zip,neighborhood,area_type' });
   if (error) {
-    const fallback = { ...payload };
-    delete fallback.neighborhood;
-    const res = await sbClient.from('zip_tracker').upsert(fallback, { onConflict: 'zip' });
-    if (res.error) toast('Sync error: ' + res.error.message);
-    else setSyncStatus('connected');
+    // Fallback 1: maybe area_type column doesn't exist yet. Drop it and use the
+    // (zip, neighborhood) constraint — which still keeps neighborhoods separate.
+    const fallback1 = { ...payload };
+    delete fallback1.area_type;
+    let res = await sbClient.from('zip_tracker').upsert(fallback1, { onConflict: 'zip,neighborhood' });
+    if (res.error) {
+      // Fallback 2: only zip is the constraint (very old schemas). This will
+      // collapse neighborhoods on the server side, which is wrong, so warn.
+      const fallback2 = { ...fallback1 };
+      delete fallback2.neighborhood;
+      res = await sbClient.from('zip_tracker').upsert(fallback2, { onConflict: 'zip' });
+      if (res.error) {
+        toast('Sync error: ' + res.error.message);
+      } else {
+        toast('Saved locally. To keep ZIPs and neighborhoods separate in DB, add area_type column.');
+        setSyncStatus('connected');
+      }
+    } else {
+      setSyncStatus('connected');
+    }
   } else {
     setSyncStatus('connected');
   }
@@ -849,37 +992,42 @@ async function upsertToSupabase(key) {
 
 async function deleteFromSupabase(key) {
   if (!sbClient) return;
-  const { zip, neighborhood } = parseKey(key);
-  let q = sbClient.from('zip_tracker').delete().eq('zip', zip);
-  if (neighborhood !== '') q = q.eq('neighborhood', neighborhood);
-  const { error } = await q;
-  if (error) {
-    const res = await sbClient.from('zip_tracker').delete().eq('zip', zip);
-    if (res.error) toast('Sync error: ' + res.error.message);
-  }
-}
+  const z = db.zips[key];
+  // We may already have removed the record locally — fall back to parsing the key.
+  const zip = normalizeZip(z ? z.zip : parseKey(key).zip);
+  const nb  = normalizeNeighborhood(z ? z.neighborhood : parseKey(key).neighborhood);
+  const areaType = z ? normalizeAreaType(z.areaType) : parseKey(key).areaType;
+  if (!zip) return;
 
-// Targeted delete for a specific (zip, neighborhood) row. Used when the user
-// renames a neighborhood label — the new row gets upserted under the new
-// neighborhood, and the old row needs to be cleaned up so the next sync
-// doesn't re-hydrate a duplicate.
-async function deleteSupabaseRowByZipNeighborhood(zip, neighborhood) {
-  if (!sbClient) return;
-  const normZip = normalizeZip(zip);
-  const normNb  = normalizeNeighborhood(neighborhood);
-  if (!normZip) return;
-  let q = sbClient.from('zip_tracker').delete().eq('zip', normZip);
-  // Match the exact empty-or-named row. If empty, we filter by empty string;
-  // if the DB stored null, the non-empty path below will cover it separately.
-  if (normNb !== '') {
-    q = q.eq('neighborhood', normNb);
+  // Try a precise delete first: zip + neighborhood + area_type.
+  let q = sbClient.from('zip_tracker').delete().eq('zip', zip);
+  if (areaType === AREA_NB) {
+    q = q.eq('neighborhood', nb).eq('area_type', AREA_NB);
   } else {
-    q = q.or('neighborhood.is.null,neighborhood.eq.');
+    // Whole-ZIP record: target rows where neighborhood is empty/null AND area_type is zip.
+    // We OR the empty/null neighborhood condition.
+    q = q.or('neighborhood.is.null,neighborhood.eq.').eq('area_type', AREA_ZIP);
   }
-  const { error } = await q;
-  if (error) {
-    // Silent fallback — leaving a stale row is safer than erroring loudly.
-    // Client dedupe will collapse it on the next load anyway.
+  let { error } = await q;
+  if (!error) return;
+
+  // Fallback: schema may not have area_type. Match on (zip, neighborhood) only.
+  let q2 = sbClient.from('zip_tracker').delete().eq('zip', zip);
+  if (areaType === AREA_NB) {
+    q2 = q2.eq('neighborhood', nb);
+  } else {
+    q2 = q2.or('neighborhood.is.null,neighborhood.eq.');
+  }
+  const res2 = await q2;
+  if (!res2.error) return;
+
+  // Last resort: delete by zip only. Loud warning because this could nuke
+  // a sibling neighborhood row.
+  if (areaType !== AREA_NB) {
+    const res3 = await sbClient.from('zip_tracker').delete().eq('zip', zip);
+    if (res3.error) toast('Sync error: ' + res3.error.message);
+  } else {
+    toast('Could not delete from DB cleanly. Local copy removed.');
   }
 }
 
@@ -887,14 +1035,27 @@ async function updateNotesInSupabase(key) {
   if (!sbClient) return;
   const z = db.zips[key];
   if (!z) return;
-  const zip = normalizeZip(z.zip || parseKey(key).zip);
-  const neighborhood = normalizeNeighborhood(z.neighborhood);
+  const zip = normalizeZip(z.zip);
+  const nb  = normalizeNeighborhood(z.neighborhood);
+  const areaType = normalizeAreaType(z.areaType);
+
   let q = sbClient.from('zip_tracker').update({ notes: z.notes }).eq('zip', zip);
-  if (neighborhood !== '') q = q.eq('neighborhood', neighborhood);
-  const { error } = await q;
-  if (error) {
-    await sbClient.from('zip_tracker').update({ notes: z.notes }).eq('zip', zip);
+  if (areaType === AREA_NB) {
+    q = q.eq('neighborhood', nb).eq('area_type', AREA_NB);
+  } else {
+    q = q.or('neighborhood.is.null,neighborhood.eq.').eq('area_type', AREA_ZIP);
   }
+  const { error } = await q;
+  if (!error) return;
+
+  // Fallback for schemas without area_type
+  let q2 = sbClient.from('zip_tracker').update({ notes: z.notes }).eq('zip', zip);
+  if (areaType === AREA_NB) {
+    q2 = q2.eq('neighborhood', nb);
+  } else {
+    q2 = q2.or('neighborhood.is.null,neighborhood.eq.');
+  }
+  await q2;
 }
 
 // ── TOAST ────────────────────────────────────────────────
@@ -1001,11 +1162,11 @@ function generateWeeklySummary({ status, distress, pressureLevel, demandRatio, s
       return 'High seller pressure and failed-listing activity make this a strong investor target. More listings are expiring than selling — motivated sellers are present. Prioritize direct mail and off-market outreach now.';
     if (dropPct > 4)
       return 'Elevated price cuts and high pressure signals indicate sellers are losing confidence. Strong negotiating position — allocate mail budget and begin making offers.';
-    return 'High seller pressure across multiple indicators. Weak demand and stale inventory create a strong deal environment. This ZIP is a primary target for direct mail and offers.';
+    return 'High seller pressure across multiple indicators. Weak demand and stale inventory create a strong deal environment. This area is a primary target for direct mail and offers.';
   }
   if (status === 'Early Distress') {
     if (expired > 0 && sold > 0 && expired >= sold * 0.5)
-      return 'Demand is soft and seller pressure is building. Failed listings are rising relative to sales — this ZIP is entering an opportunity phase. Begin light outreach and monitor closely each week.';
+      return 'Demand is soft and seller pressure is building. Failed listings are rising relative to sales — this area is entering an opportunity phase. Begin light outreach and monitor closely each week.';
     return 'Early signs of seller pressure are forming. Demand is weakening but distress has not fully set in. Begin light outreach now to get ahead of competition before conditions worsen.';
   }
   if (status === 'Slow') {
@@ -1090,17 +1251,36 @@ function autoCalc() {
   }
 }
 
+// Toggle the neighborhood field on/off based on Area Type selection.
+// When "Whole ZIP" is chosen, neighborhood is disabled and visually muted
+// so the user can't accidentally save a neighborhood-flavored whole-ZIP.
+function onAreaTypeChange() {
+  const areaType = document.getElementById('f-area-type').value;
+  const nbInput  = document.getElementById('f-neighborhood');
+  const nbLabel  = document.getElementById('f-neighborhood-label');
+  if (areaType === AREA_NB) {
+    nbInput.disabled = false;
+    nbInput.placeholder = 'Parkwood (required)';
+    nbLabel.textContent = 'Neighborhood (required)';
+  } else {
+    nbInput.disabled = true;
+    nbInput.value = '';
+    nbInput.placeholder = '— not used for whole ZIP —';
+    nbLabel.textContent = 'Neighborhood (n/a for whole ZIP)';
+  }
+}
+
 function startNewZip() {
-  editingKey = null;     // clear edit mode so showPage('add') will allow the reset
-  resetForm();           // force clean form
-  showPage('add');       // open add page
+  editingKey = null;
+  resetForm();
+  showPage('add');
 }
 
 function resetForm() {
   editingKey = null;
-  document.getElementById('form-title').textContent = 'Add new zip code';
+  document.getElementById('form-title').textContent = 'Add new record';
   document.getElementById('delete-btn').style.display = 'none';
-  document.getElementById('pdf-btn').style.display = 'none'; // Hide PDF button for new ZIPs
+  document.getElementById('pdf-btn').style.display = 'none';
   ['f-zip','f-neighborhood','f-active','f-pending','f-sold','f-expired','f-dom','f-dom-avg','f-fast','f-lsr',
    'f-drop-amt','f-list-price','f-drop-pct','f-demand','f-comp','f-low-sale','f-works','f-doesnt','f-notes'].forEach(id => {
     const el = document.getElementById(id);
@@ -1113,7 +1293,9 @@ function resetForm() {
   const readEl = document.getElementById('weekly-market-read');
   if (readEl) readEl.style.display = 'none';
   document.getElementById('f-zip').disabled = false;
-  document.getElementById('f-neighborhood').disabled = false;
+  document.getElementById('f-area-type').disabled = false;
+  document.getElementById('f-area-type').value = AREA_ZIP;
+  onAreaTypeChange();
   document.getElementById('f-role').value = 'Main focus';
   document.getElementById('f-distress').value = 'Moderate';
   document.getElementById('f-date').value = new Date().toISOString().split('T')[0];
@@ -1124,16 +1306,33 @@ function editZip(key) {
   if (!z) return;
   const zip = z.zip || parseKey(key).zip;
   const neighborhood = z.neighborhood || '';
+  const areaType = normalizeAreaType(z.areaType);
   const latest = z.history[z.history.length-1];
   editingKey = key;
-  const titleLabel = neighborhood ? (zip + ' — ' + neighborhood) : zip;
+
+  const titleLabel = areaType === AREA_NB
+    ? (zip + ' — ' + neighborhood + ' (Neighborhood)')
+    : (zip + ' (Whole ZIP)');
   document.getElementById('form-title').textContent = 'Edit / Update — ' + titleLabel;
   document.getElementById('delete-btn').style.display = 'inline-block';
-  document.getElementById('pdf-btn').style.display = 'inline-block'; // Show PDF button when editing
+  document.getElementById('pdf-btn').style.display = 'inline-block';
+
+  document.getElementById('f-area-type').value = areaType;
+  // Lock area-type during edit. Changing it would change the key, which would
+  // strand the existing record under its old key. If the user really needs to
+  // convert a record's type, the right move is delete + recreate.
+  document.getElementById('f-area-type').disabled = true;
+  onAreaTypeChange();
+
   document.getElementById('f-zip').value = zip;
   document.getElementById('f-neighborhood').value = neighborhood;
   document.getElementById('f-zip').disabled = true;
-  document.getElementById('f-neighborhood').disabled = false;
+  // Neighborhood field stays editable for nb records (in case user wants to
+  // fix a typo in the label) but disabled for whole-ZIP.
+  if (areaType === AREA_NB) {
+    document.getElementById('f-neighborhood').disabled = false;
+  }
+
   document.getElementById('f-role').value = z.role||'Main focus';
   document.getElementById('f-distress').value = z.distress||'Moderate';
   document.getElementById('f-works').value = z.works||'';
@@ -1167,10 +1366,12 @@ function sanitizeFilenamePart(s) {
 
 function buildPdfFilename(zipRecord) {
   const zip = sanitizeFilenamePart(zipRecord.zip || 'UNKNOWN');
-  const neighborhood = sanitizeFilenamePart(zipRecord.neighborhood || 'Area');
+  const nb  = zipRecord.areaType === AREA_NB
+    ? sanitizeFilenamePart(zipRecord.neighborhood || 'Neighborhood')
+    : 'WholeZIP';
   const latest = zipRecord.history && zipRecord.history.length > 0 ? zipRecord.history[zipRecord.history.length - 1] : null;
   const weekDate = latest && latest.isoDate ? latest.isoDate : new Date().toISOString().split('T')[0];
-  return `${zip}-${neighborhood}-Week-${weekDate}-Market-Report.pdf`;
+  return `${zip}-${nb}-Week-${weekDate}-Market-Report.pdf`;
 }
 
 function generateZipPDF(zipRecord) {
@@ -1192,6 +1393,7 @@ function generateZipPDF(zipRecord) {
 
   const zip = zipRecord.zip || '';
   const neighborhood = zipRecord.neighborhood || '';
+  const areaType = normalizeAreaType(zipRecord.areaType);
   const role = zipRecord.role || '';
   const works = zipRecord.works || '';
   const doesnt = zipRecord.doesnt || '';
@@ -1200,7 +1402,6 @@ function generateZipPDF(zipRecord) {
   const history = zipRecord.history || [];
   const latest = history.length > 0 ? history[history.length - 1] : null;
 
-  // Helper: ensure we have space, otherwise add new page
   function ensureSpace(needed) {
     if (y + needed > pageHeight - marginBottom) {
       doc.addPage();
@@ -1208,7 +1409,6 @@ function generateZipPDF(zipRecord) {
     }
   }
 
-  // Helper: draw a section heading
   function drawSectionHeading(text) {
     ensureSpace(28);
     doc.setFont('helvetica', 'bold');
@@ -1222,7 +1422,6 @@ function generateZipPDF(zipRecord) {
     y += 14;
   }
 
-  // Helper: draw a key-value row
   function drawKV(label, value) {
     ensureSpace(18);
     doc.setFont('helvetica', 'normal');
@@ -1238,7 +1437,6 @@ function generateZipPDF(zipRecord) {
     y += Math.max(14, valueLines.length * 12);
   }
 
-  // Helper: draw a wrapped paragraph
   function drawParagraph(text) {
     if (!text) {
       ensureSpace(14);
@@ -1261,18 +1459,23 @@ function generateZipPDF(zipRecord) {
     y += 4;
   }
 
-  // ── TITLE ────────────────────────────────────────────
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(20);
   doc.setTextColor(26, 26, 26);
-  doc.text('Weekly ZIP Market Report', marginLeft, y);
+  doc.text('Weekly Market Report', marginLeft, y);
   y += 24;
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(16);
-  const titleLine = neighborhood ? `${zip} — ${neighborhood}` : zip;
+  const titleLine = areaType === AREA_NB ? `${zip} — ${neighborhood}` : zip;
   doc.text(titleLine, marginLeft, y);
   y += 18;
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10);
+  doc.setTextColor(areaType === AREA_NB ? 111 : 30, areaType === AREA_NB ? 66 : 132, areaType === AREA_NB ? 193 : 73);
+  doc.text(areaType === AREA_NB ? 'NEIGHBORHOOD MARKET' : 'WHOLE ZIP MARKET', marginLeft, y);
+  y += 16;
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
@@ -1281,16 +1484,15 @@ function generateZipPDF(zipRecord) {
   doc.text('Generated: ' + generatedAt, marginLeft, y);
   y += 20;
 
-  // ── ZIP METADATA ────────────────────────────────────
-  drawSectionHeading('ZIP Overview');
+  drawSectionHeading('Overview');
   drawKV('ZIP Code', zip);
-  drawKV('Neighborhood', neighborhood);
+  drawKV('Area Type', areaType === AREA_NB ? 'Neighborhood inside ZIP' : 'Whole ZIP');
+  if (areaType === AREA_NB) drawKV('Neighborhood', neighborhood);
   drawKV('Role / Strategy', role);
   drawKV('Distress Level', distress);
   if (latest) drawKV('Week of', latest.date || latest.isoDate || '—');
   y += 6;
 
-  // ── CURRENT WEEK METRICS ────────────────────────────
   if (latest) {
     drawSectionHeading('Current Week Metrics');
     drawKV('Active Listings', latest.active);
@@ -1308,7 +1510,7 @@ function generateZipPDF(zipRecord) {
     drawKV('Weekly Demand Ratio', latest.demand != null ? latest.demand : '—');
     drawKV('Competition Score', latest.comp != null ? latest.comp + ' / 10' : '—');
     drawKV('Pressure Score', latest.pressureScore != null ? latest.pressureScore + ' / 10 (' + (latest.pressureLevel || '') + ')' : '—');
-    drawKV('Weekly ZIP Score', latest.zipScore != null ? latest.zipScore + ' / 10' : '—');
+    drawKV('Weekly Score', latest.zipScore != null ? latest.zipScore + ' / 10' : '—');
     drawKV('Status', latest.status || '—');
     drawKV('Recommended Action', latest.action || '—');
     y += 6;
@@ -1322,13 +1524,11 @@ function generateZipPDF(zipRecord) {
     y += 20;
   }
 
-  // ── MARKET READ SUMMARY ─────────────────────────────
   if (latest && latest.summary) {
     drawSectionHeading('Market Read Summary');
     drawParagraph(latest.summary);
   }
 
-  // ── INVESTOR STRATEGY ───────────────────────────────
   drawSectionHeading('What Works Here');
   drawParagraph(works);
 
@@ -1338,11 +1538,9 @@ function generateZipPDF(zipRecord) {
   drawSectionHeading('Notes / Investor Read');
   drawParagraph(notes);
 
-  // ── FULL HISTORY ────────────────────────────────────
   if (history.length > 0) {
     drawSectionHeading('Full Weekly History (' + history.length + ' entries)');
 
-    // Header row
     ensureSpace(20);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(9);
@@ -1364,7 +1562,7 @@ function generateZipPDF(zipRecord) {
     doc.text('Exp', colX.expired, y);
     doc.text('DOM', colX.dom, y);
     doc.text('Status', colX.status, y);
-    doc.text('ZIP Score', colX.score, y);
+    doc.text('Score', colX.score, y);
     y += 4;
     doc.setDrawColor(220, 220, 220);
     doc.line(marginLeft, y, marginLeft + contentWidth, y);
@@ -1374,7 +1572,6 @@ function generateZipPDF(zipRecord) {
     doc.setFontSize(9);
     doc.setTextColor(50, 50, 50);
 
-    // Iterate newest first
     [...history].reverse().forEach((h, idx) => {
       ensureSpace(14);
       doc.text(String(h.date || h.isoDate || '—').substring(0, 14), colX.date, y);
@@ -1389,7 +1586,6 @@ function generateZipPDF(zipRecord) {
     });
   }
 
-  // ── FOOTER on every page ────────────────────────────
   const totalPages = doc.internal.getNumberOfPages();
   for (let i = 1; i <= totalPages; i++) {
     doc.setPage(i);
@@ -1407,12 +1603,12 @@ function generateZipPDF(zipRecord) {
 
 function downloadCurrentZipPDF() {
   if (!editingKey) {
-    toast('No ZIP selected for PDF export.');
+    toast('No record selected for PDF export.');
     return;
   }
   const z = db.zips[editingKey];
   if (!z) {
-    toast('ZIP data not found.');
+    toast('Record not found.');
     return;
   }
   const ok = generateZipPDF(z);
@@ -1421,28 +1617,48 @@ function downloadCurrentZipPDF() {
 
 async function saveZip() {
   const zip = (document.getElementById('f-zip').value||'').trim();
-  const neighborhood = (document.getElementById('f-neighborhood').value||'').trim();
-  if (!zip) { alert('Enter a zip code'); return; }
-  const key = makeKey(zip); // ZIP-only key; one ZIP = one record
+  const areaType = normalizeAreaType(document.getElementById('f-area-type').value);
+  const neighborhoodRaw = (document.getElementById('f-neighborhood').value||'').trim();
 
-  // Under the new "one ZIP = one record" rule, the key doesn't change during edit
-  // (zip is disabled on the form). But the NEIGHBORHOOD LABEL can change, and a
-  // stale Supabase row for (zip, oldNeighborhood) would sync back as a duplicate.
-  // Track the old neighborhood so we can clean up that Supabase row after saving.
+  if (!zip) { alert('Enter a zip code'); return; }
+  if (areaType === AREA_NB && !neighborhoodRaw) {
+    alert('Neighborhood is required when Area Type is "Neighborhood inside ZIP".');
+    return;
+  }
+
+  const neighborhood = areaType === AREA_NB ? neighborhoodRaw : '';
+  const key = makeKey(zip, neighborhood, areaType);
+
+  // Track old neighborhood label so we can clean up a stale Supabase row if the
+  // user fixed a typo (e.g. "parkwod" → "Parkwood"). The KEY won't change because
+  // the key uses lowercased+collapsed nb, but case changes within the same key
+  // can leave a row with different casing on the server.
   let oldNeighborhood = '';
   if (editingKey && db.zips[editingKey]) {
     oldNeighborhood = normalizeNeighborhood(db.zips[editingKey].neighborhood);
   }
-  const neighborhoodChanged = editingKey && oldNeighborhood !== normalizeNeighborhood(neighborhood);
+  const neighborhoodLabelChanged = editingKey && areaType === AREA_NB && oldNeighborhood !== neighborhood;
 
-  // Backup confirmation when overwriting an existing ZIP
   const isOverwrite = editingKey && db.zips[key] && db.zips[key].history && db.zips[key].history.length > 0;
   if (isOverwrite) {
     const backupChoice = confirm('Do you want to download a PDF backup before saving this new update?\n\nClick OK to download the backup first, or Cancel to skip the backup and save directly.');
     if (backupChoice) {
       generateZipPDF(db.zips[key]);
-      // Small delay to let the download trigger before we continue saving
       await new Promise(resolve => setTimeout(resolve, 400));
+    }
+  }
+
+  // Hard guard: when ADDING a new record (not editing), block creating a record
+  // whose key collides with an existing one. This is the safety net that makes
+  // sure a user trying to add 40214 whole-ZIP when 40214 whole-ZIP already
+  // exists gets a clear message instead of silently overwriting.
+  if (!editingKey && db.zips[key]) {
+    const existing = db.zips[key];
+    const existingLabel = existing.areaType === AREA_NB
+      ? (existing.zip + ' — ' + existing.neighborhood + ' (Neighborhood)')
+      : (existing.zip + ' (Whole ZIP)');
+    if (!confirm('A record already exists for ' + existingLabel + '.\n\nClick OK to ADD this week\'s data to the existing record, or Cancel to abort.')) {
+      return;
     }
   }
 
@@ -1476,26 +1692,36 @@ async function saveZip() {
     summary:      calc.summary,
   };
   if (!db.zips[key]) {
-    db.zips[key] = { zip, neighborhood, history:[], role:'', distress:'Moderate', works:'', doesnt:'', notes:'' };
+    db.zips[key] = { zip, neighborhood, areaType, history:[], role:'', distress:'Moderate', works:'', doesnt:'', notes:'' };
   }
   db.zips[key].zip          = zip;
   db.zips[key].neighborhood = neighborhood;
+  db.zips[key].areaType     = areaType;
   db.zips[key].role     = document.getElementById('f-role').value;
   db.zips[key].distress = calc.distress;
   db.zips[key].works    = document.getElementById('f-works').value;
   db.zips[key].doesnt   = document.getElementById('f-doesnt').value;
   db.zips[key].notes    = document.getElementById('f-notes').value;
   db.zips[key].history.push(entry);
+
   document.getElementById('f-zip').disabled = false;
   document.getElementById('f-neighborhood').disabled = false;
+  document.getElementById('f-area-type').disabled = false;
   saveLocal();
   setSyncStatus('syncing');
   await upsertToSupabase(key);
-  // If the neighborhood LABEL changed during this edit, a stale Supabase row
-  // may still exist for the old (zip, oldNeighborhood) combo. Clean it up
-  // so the next sync doesn't re-hydrate a duplicate.
-  if (neighborhoodChanged) {
-    await deleteSupabaseRowByZipNeighborhood(zip, oldNeighborhood);
+
+  // If the neighborhood label CASE changed (same key, different display), the
+  // server may still have the old casing in a separate row from a previous
+  // schema. Try to clean it up so the next loadFromSupabase doesn't re-hydrate
+  // the old casing on top of the new.
+  if (neighborhoodLabelChanged && oldNeighborhood && oldNeighborhood !== neighborhood) {
+    // Best-effort cleanup; ignore errors silently.
+    if (sbClient) {
+      try {
+        await sbClient.from('zip_tracker').delete().eq('zip', zip).eq('neighborhood', oldNeighborhood).eq('area_type', AREA_NB);
+      } catch(e) {}
+    }
   }
   toast('Saved!');
   showPage('dashboard');
@@ -1506,19 +1732,25 @@ async function deleteZip() {
   const rec = db.zips[editingKey] || {};
   const zip = rec.zip || parseKey(editingKey).zip;
   const neighborhood = rec.neighborhood || '';
-  const label = neighborhood ? (zip + ' — ' + neighborhood) : zip;
+  const areaType = normalizeAreaType(rec.areaType);
+  const label = areaType === AREA_NB
+    ? (zip + ' — ' + neighborhood + ' (Neighborhood)')
+    : (zip + ' (Whole ZIP)');
   const typed = prompt('Delete ' + label + '?\n\nThis cannot be undone.\nType DELETE (all caps) to confirm:');
   if (typed !== 'DELETE') {
     if (typed !== null) toast('Delete cancelled — text did not match');
     return;
   }
-  // Safety snapshot before removing anything
   createBackup('pre_delete');
-  delete db.zips[editingKey];
+  // Capture the key first — deleting from the local db wipes the record we
+  // need to read for accurate Supabase targeting.
+  const keyToDelete = editingKey;
+  await deleteFromSupabase(keyToDelete);
+  delete db.zips[keyToDelete];
   document.getElementById('f-zip').disabled = false;
   document.getElementById('f-neighborhood').disabled = false;
+  document.getElementById('f-area-type').disabled = false;
   saveLocal();
-  await deleteFromSupabase(editingKey);
   toast(label + ' deleted');
   showPage('dashboard');
 }
@@ -1547,12 +1779,11 @@ function renderDashboard() {
   const grid = document.getElementById('zip-grid');
   const searchEl = document.getElementById('dash-search');
   const query = (searchEl ? searchEl.value : '').trim().toLowerCase();
-  // Silent, idempotent dedupe — removes accidental duplicates before display.
   if (typeof dedupeZipRecords === 'function') dedupeZipRecords();
   const allKeys = Object.keys(db.zips);
 
   if (allKeys.length===0) {
-    grid.innerHTML = '<div class="no-zips">No zip codes yet.<br>Tap + to add your first zip.</div>';
+    grid.innerHTML = '<div class="no-zips">No records yet.<br>Tap + to add your first ZIP or neighborhood.</div>';
     return;
   }
 
@@ -1570,22 +1801,46 @@ function renderDashboard() {
     return;
   }
 
-  grid.innerHTML = keys.map(k => {
+  // Sort: whole-ZIPs first within each ZIP, then neighborhoods alphabetically.
+  // This puts the parent ZIP visually next to its neighborhoods.
+  const sortedKeys = keys.slice().sort((a, b) => {
+    const za = db.zips[a], zb = db.zips[b];
+    const zipA = (za.zip || '').toString();
+    const zipB = (zb.zip || '').toString();
+    if (zipA !== zipB) return zipA.localeCompare(zipB);
+    // Same ZIP: whole-ZIP before neighborhoods
+    const aIsZip = normalizeAreaType(za.areaType) === AREA_ZIP;
+    const bIsZip = normalizeAreaType(zb.areaType) === AREA_ZIP;
+    if (aIsZip && !bIsZip) return -1;
+    if (!aIsZip && bIsZip) return 1;
+    // Both neighborhoods: sort by neighborhood name
+    return (za.neighborhood || '').localeCompare(zb.neighborhood || '');
+  });
+
+  grid.innerHTML = sortedKeys.map(k => {
     const z = db.zips[k];
     const parsed = parseKey(k);
     const zip = z.zip || parsed.zip;
-    const neighborhood = z.neighborhood || parsed.neighborhood || '';
+    const neighborhood = z.neighborhood || '';
+    const areaType = normalizeAreaType(z.areaType);
+    const isNb = areaType === AREA_NB;
     const l = z.history[z.history.length-1];
     const score = l && l.zipScore ? parseFloat(l.zipScore) : 0;
     const prev = z.history.length>1 ? z.history[z.history.length-2] : null;
     const domChange = l&&prev ? l.dom - prev.dom : null;
     const domCls = domChange===null?'':domChange<0?'down':domChange>0?'up':'';
-    return `<div class="zip-card" onclick="showPage('detail','${esc(k).replace(/'/g,"\\'")}')">
+
+    const labelLine = isNb
+      ? `<div class="zip-neighborhood"><span class="area-dot neighborhood"></span>${esc(neighborhood)}</div>
+         <div class="area-subtitle neighborhood">Neighborhood Market</div>`
+      : `<div class="area-subtitle zip">Whole ZIP Market</div>`;
+
+    return `<div class="zip-card ${isNb?'is-neighborhood':''}" onclick="showPage('detail','${esc(k).replace(/'/g,"\\'")}')">
       <div class="zip-card-top">
         <div>
           <div class="zip-num">${esc(zip)}</div>
-          ${neighborhood?`<div class="zip-neighborhood">${esc(neighborhood)}</div>`:''}
-          <div style="margin-top:4px">${distressBadge(z.distress)}</div>
+          ${labelLine}
+          <div style="margin-top:6px">${distressBadge(z.distress)}</div>
         </div>
         <span class="zip-role ${roleClass(z.role)}">${esc(z.role)}</span>
       </div>
@@ -1596,8 +1851,8 @@ function renderDashboard() {
         <div class="metric-mini"><div class="metric-mini-label">Price drop avg</div><div class="metric-mini-val warn">-${l.dropPct}%</div></div>
       </div>
       <div class="score-bar-wrap">
-        <div class="score-bar-label"><span>Weekly ZIP score</span><span>${score}/10</span></div>
-        <div class="score-bar-track"><div class="score-bar-fill" style="width:${score*10}%"></div></div>
+        <div class="score-bar-label"><span>Weekly score</span><span>${score}/10</span></div>
+        <div class="score-bar-track"><div class="score-bar-fill" style="width:${score*10}%;background:${isNb?'#6f42c1':'#1a1a1a'}"></div></div>
       </div>`:'<div style="color:#bbb;font-size:12px;margin-top:8px">No data yet — tap to update</div>'}
       <div class="zip-updated">${l?'Updated '+l.date:'—'} &nbsp;·&nbsp; ${l&&l.status?l.status+' · '+l.action:z.history.length+' week'+(z.history.length!==1?'s':'')+' of data'}</div>
     </div>`;
@@ -1607,7 +1862,7 @@ function renderDashboard() {
 function renderRanking() {
   const keys = Object.keys(db.zips);
   if (keys.length===0) {
-    document.getElementById('rank-table').innerHTML='<tr><td style="padding:2rem;color:#aaa;text-align:center">No zip codes added yet</td></tr>';
+    document.getElementById('rank-table').innerHTML='<tr><td style="padding:2rem;color:#aaa;text-align:center">No records added yet</td></tr>';
     document.getElementById('strat-bars').innerHTML='';
     return;
   }
@@ -1616,17 +1871,29 @@ function renderRanking() {
     const l=z.history[z.history.length-1];
     const ps=l&&l.pressureScore?parseFloat(l.pressureScore):0;
     const zs=l&&l.zipScore?parseFloat(l.zipScore):0;
-    return {k, z, zip: z.zip || parseKey(k).zip, neighborhood: z.neighborhood || parseKey(k).neighborhood || '', pressureScore:ps, score:zs};
+    const areaType = normalizeAreaType(z.areaType);
+    return {
+      k, z,
+      zip: z.zip || parseKey(k).zip,
+      neighborhood: z.neighborhood || '',
+      areaType,
+      pressureScore:ps,
+      score:zs
+    };
   }).sort((a,b)=>b.pressureScore-a.pressureScore||b.score-a.score);
   const medals=['🥇','🥈','🥉','4️⃣','5️⃣','6️⃣','7️⃣','8️⃣','9️⃣'];
   document.getElementById('rank-table').innerHTML=`
-    <thead><tr><th>Rank</th><th>Zip</th><th>Neighborhood</th><th>Role</th><th>Pressure</th><th>ZIP Score</th><th>Status</th><th>Action</th><th>DOM</th><th>Sold (7d)</th><th>Expired (7d)</th></tr></thead>
+    <thead><tr><th>Rank</th><th>ZIP</th><th>Type / Area</th><th>Role</th><th>Pressure</th><th>Score</th><th>Status</th><th>Action</th><th>DOM</th><th>Sold (7d)</th><th>Expired (7d)</th></tr></thead>
     <tbody>${sorted.map((item,i)=>{
       const l = item.z.history[item.z.history.length-1];
+      const isNb = item.areaType === AREA_NB;
+      const typeCell = isNb
+        ? `<span class="area-type-pill neighborhood">● ${esc(item.neighborhood)}</span>`
+        : `<span class="area-type-pill zip">Whole ZIP</span>`;
       return `<tr>
         <td class="rank-medal">${medals[i]||i+1}</td>
         <td class="rank-zip">${esc(item.zip)}</td>
-        <td class="rank-neighborhood">${item.neighborhood?esc(item.neighborhood):'<span style="color:#bbb">—</span>'}</td>
+        <td>${typeCell}</td>
         <td><span class="zip-role ${roleClass(item.z.role)}" style="font-size:11px">${esc(item.z.role)}</span></td>
         <td class="rank-score" style="font-size:14px">${item.pressureScore.toFixed(1)}<span style="font-size:10px;color:#888;font-weight:400">/10</span></td>
         <td style="font-size:13px;color:#888">${item.score.toFixed(1)}</td>
@@ -1641,10 +1908,14 @@ function renderRanking() {
   const colors=['#1a1a1a','#555','#888','#aaa','#ccc'];
   document.getElementById('strat-bars').innerHTML=sorted.map((item,i)=>{
     const pct = Math.round((item.pressureScore/total)*100);
-    const label = item.neighborhood ? (item.zip + ' · ' + item.neighborhood) : item.zip;
+    const isNb = item.areaType === AREA_NB;
+    const label = isNb
+      ? (item.zip + ' · ● ' + item.neighborhood)
+      : (item.zip + ' · Whole ZIP');
+    const barColor = isNb ? '#6f42c1' : colors[Math.min(i,4)];
     return `<div class="strat-row">
-      <div class="strat-zip" style="font-weight:700;min-width:auto;flex:0 0 auto;max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(label)}">${esc(label)}</div>
-      <div class="strat-bar-track"><div class="strat-bar-fill" style="width:${pct}%;background:${colors[Math.min(i,4)]}"></div></div>
+      <div class="strat-zip" style="font-weight:700;min-width:auto;flex:0 0 auto;max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(label)}">${esc(label)}</div>
+      <div class="strat-bar-track"><div class="strat-bar-fill" style="width:${pct}%;background:${barColor}"></div></div>
       <div class="strat-pct">${pct}%</div>
     </div>`;
   }).join('');
@@ -1653,9 +1924,11 @@ function renderRanking() {
 function renderDetail(key) {
   const z = db.zips[key];
   if (!z) { showPage('dashboard'); return; }
-  currentDetailKey = key; // remember which ZIP the detail page is showing
+  currentDetailKey = key;
   const zip = z.zip || parseKey(key).zip;
-  const neighborhood = z.neighborhood || parseKey(key).neighborhood || '';
+  const neighborhood = z.neighborhood || '';
+  const areaType = normalizeAreaType(z.areaType);
+  const isNb = areaType === AREA_NB;
   const l = z.history[z.history.length-1];
   const prev = z.history.length>1 ? z.history[z.history.length-2] : null;
   const score = l && l.zipScore ? parseFloat(l.zipScore) : 0;
@@ -1674,20 +1947,25 @@ function renderDetail(key) {
 
   const safeKey = esc(key).replace(/'/g,"\\'");
 
+  const headerLabel = isNb
+    ? `<div class="detail-neighborhood"><span class="area-dot neighborhood"></span>${esc(neighborhood)}</div>
+       <div class="area-subtitle neighborhood" style="margin-top:4px">Neighborhood Market</div>`
+    : `<div class="area-subtitle zip" style="margin-top:4px">Whole ZIP Market</div>`;
+
   document.getElementById('detail-content').innerHTML=`
-    <div class="detail-header">
+    <div class="detail-header ${isNb?'is-neighborhood':''}">
       <div>
         <div class="detail-zip">${esc(zip)}</div>
-        ${neighborhood?`<div class="detail-neighborhood">${esc(neighborhood)}</div>`:''}
-        <div class="detail-role">${esc(z.role)} &nbsp;·&nbsp; ${distressBadge(z.distress)}</div>
+        ${headerLabel}
+        <div class="detail-role" style="margin-top:6px">${esc(z.role)} &nbsp;·&nbsp; ${distressBadge(z.distress)}</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
-          <button class="btn-primary" style="padding:6px 14px;font-size:12px" onclick="editZip(currentDetailKey)">✏️ Edit / Update ZIP</button>
+          <button class="btn-primary" style="padding:6px 14px;font-size:12px" onclick="editZip(currentDetailKey)">✏️ Edit / Update</button>
           <button class="btn-pdf" style="padding:6px 14px;font-size:12px" onclick="generateZipPDF(db.zips[currentDetailKey])">📄 Download PDF</button>
         </div>
       </div>
       <div style="text-align:right">
         <div style="font-size:28px;font-weight:700">${score}<span style="font-size:14px;color:#888">/10</span></div>
-        <div style="font-size:11px;color:#888;margin-bottom:4px">Weekly ZIP score</div>
+        <div style="font-size:11px;color:#888;margin-bottom:4px">Weekly score</div>
         ${l&&l.status?`<span class="mkt-badge ${statusClass(l.status)}" style="font-size:10px">${l.status}</span>`:'' }
         ${l&&l.action?`<span class="mkt-badge ${actionClass(l.action)}" style="font-size:10px;margin-top:4px;display:inline-block">${l.action}</span>`:''}
       </div>
@@ -1712,7 +1990,7 @@ function renderDetail(key) {
     ${l&&l.zipScore?`<div class="market-read-card" style="margin-bottom:12px">
       <h3>📊 Weekly Market Read</h3>
       <div class="market-read-top">
-        <div><div class="mkt-score">${l.zipScore} / 10</div><div class="mkt-score-label">ZIP score &nbsp;·&nbsp; <span style="color:${l.pressureLevel==='Severe'||l.pressureLevel==='High'?'#c0392b':l.pressureLevel==='Moderate'?'#d4ac0d':'#888'}">${l.pressureLevel||''} pressure</span></div></div>
+        <div><div class="mkt-score">${l.zipScore} / 10</div><div class="mkt-score-label">Score &nbsp;·&nbsp; <span style="color:${l.pressureLevel==='Severe'||l.pressureLevel==='High'?'#c0392b':l.pressureLevel==='Moderate'?'#d4ac0d':'#888'}">${l.pressureLevel||''} pressure</span></div></div>
         <span class="mkt-badge ${statusClass(l.status)}">${l.status||'—'}</span>
         <span class="mkt-badge ${actionClass(l.action)}">${l.action||'—'}</span>
       </div>
