@@ -142,6 +142,14 @@ header span{font-size:12px;color:#aaa}
 .sync-btn:hover{background:rgba(255,255,255,0.18)}
 .sync-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#d4ac0d;flex-shrink:0}
 .sync-dot.connected{background:#1e8449}
+.sync-dot.error{background:#c0392b}
+.sync-dot.local{background:#d4ac0d}
+.sync-dot.loading{background:#3498db}
+.sync-banner{display:none;padding:9px 16px;font-size:12px;font-weight:600;border-bottom:1px solid #e0e0e0}
+.sync-banner.local{display:block;background:#fff8e1;color:#7a4f0a}
+.sync-banner.error{display:block;background:#fff1f1;color:#9f1d1d}
+.sync-banner.loading{display:block;background:#eef6ff;color:#1f5f99}
+.sync-banner.synced{display:none}
 
 /* SYNC DROPDOWN */
 .sync-dropdown{display:none;position:absolute;top:52px;right:0;background:#fff;border:1px solid #e0e0e0;border-radius:0 0 12px 12px;padding:16px;width:320px;z-index:300;box-shadow:0 8px 32px rgba(0,0,0,0.12)}
@@ -241,6 +249,7 @@ header span{font-size:12px;color:#aaa}
     </div>
   </div>
 </header>
+<div id="sync-banner" class="sync-banner"></div>
 
 <div class="tabs" id="tabs">
   <div class="tab active" onclick="showPage('dashboard')">Dashboard</div>
@@ -810,252 +819,147 @@ document.addEventListener('click', function(e) {
   if (!dd.contains(e.target) && !btn.contains(e.target)) dd.classList.remove('open');
 });
 
-function setSyncStatus(state) {
+function setSyncStatus(state, message) {
   const dot   = document.getElementById('sync-dot');
   const label = document.getElementById('sync-label');
   const form  = document.getElementById('sync-form');
   const info  = document.getElementById('sync-connected-info');
   const title = document.getElementById('sync-dropdown-title');
+  const banner = document.getElementById('sync-banner');
+  dot.style.background = '';
+  dot.className = 'sync-dot';
+  if (banner) { banner.className = 'sync-banner'; banner.textContent = ''; }
   if (state === 'connected') {
     dot.className = 'sync-dot connected';
     label.textContent = 'Synced';
-    form.style.display = 'none';
-    info.style.display = 'block';
-    title.textContent = 'Database connected';
-  } else if (state === 'syncing') {
-    dot.className = 'sync-dot';
-    dot.style.background = '#d4ac0d';
-    label.textContent = 'Syncing…';
+    if (form) form.style.display = 'none';
+    if (info) info.style.display = 'block';
+    if (title) title.textContent = 'Database connected';
+    if (banner) banner.className = 'sync-banner synced';
+  } else if (state === 'syncing' || state === 'loading') {
+    dot.className = 'sync-dot loading';
+    label.textContent = state === 'loading' ? 'Loading cloud…' : 'Syncing…';
+    if (banner) { banner.className = 'sync-banner loading'; banner.textContent = message || 'Loading cloud data from Supabase…'; }
+  } else if (state === 'error') {
+    dot.className = 'sync-dot error';
+    label.textContent = 'Sync error';
+    if (form) form.style.display = 'block';
+    if (info) info.style.display = 'none';
+    if (title) title.textContent = 'Sync problem';
+    if (banner) { banner.className = 'sync-banner error'; banner.textContent = message || 'Sync error. Fix Supabase before trusting this data.'; }
   } else {
-    dot.className = 'sync-dot';
-    dot.style.background = '#d4ac0d';
-    label.textContent = 'Connect DB';
+    dot.className = 'sync-dot local';
+    label.textContent = 'Local only';
     if (form) form.style.display = 'block';
     if (info) info.style.display = 'none';
     if (title) title.textContent = 'Connect Supabase';
+    if (banner) { banner.className = 'sync-banner local'; banner.textContent = message || 'Local-only mode: this browser is not synced. Connect Supabase to see the same data everywhere.'; }
   }
+}
+
+async function validateSupabaseSchema() {
+  if (!sbClient) throw new Error('Supabase is not connected.');
+  const { error } = await sbClient.from('zip_tracker').select('zip,neighborhood,area_type,role,distress,works,doesnt,notes,entry_data,updated_at').limit(1);
+  if (error) throw new Error('Supabase schema is wrong. Required columns: zip, neighborhood, area_type, role, distress, works, doesnt, notes, entry_data, updated_at. Also set unique constraint on (zip, neighborhood, area_type). Supabase said: ' + error.message);
 }
 
 async function connectSupabase() {
   const url = document.getElementById('setup-url').value.trim();
   const key = document.getElementById('setup-key').value.trim();
   if (!url || !key) { toast('Please enter both URL and key'); return; }
-  toast('Connecting...');
-  if (!initSupabase(url, key)) { toast('Invalid credentials'); return; }
-  const { error } = await sbClient.from('zip_tracker').select('zip').limit(1);
-  if (error) { toast('Error: ' + error.message); sbClient = null; return; }
-  localStorage.setItem(SB_URL_KEY, url);
-  localStorage.setItem(SB_KEY_KEY, key);
-  setSyncStatus('syncing');
-  await loadFromSupabase();
-  setSyncStatus('connected');
-  toggleSyncDropdown();
-  renderDashboard();
-  toast('Connected! Data synced.');
+  try {
+    setSyncStatus('loading', 'Connecting to Supabase and checking the table schema…');
+    if (!initSupabase(url, key)) throw new Error('Invalid Supabase credentials.');
+    await validateSupabaseSchema();
+    localStorage.setItem(SB_URL_KEY, url);
+    localStorage.setItem(SB_KEY_KEY, key);
+    await loadFromSupabase(true);
+    setSyncStatus('connected');
+    toggleSyncDropdown();
+    renderDashboard();
+    toast('Connected. Cloud data is now the source of truth.');
+  } catch (err) {
+    sbClient = null;
+    localStorage.removeItem(SB_URL_KEY);
+    localStorage.removeItem(SB_KEY_KEY);
+    setSyncStatus('error', err.message);
+    toast('Sync setup failed');
+  }
 }
 
 function disconnectSupabase() {
-  if (!confirm('Disconnect? Data will only save locally.')) return;
+  if (!confirm('Disconnect? This browser will switch to LOCAL-ONLY mode and will not match other browsers.')) return;
   localStorage.removeItem(SB_URL_KEY);
   localStorage.removeItem(SB_KEY_KEY);
   sbClient = null;
-  setSyncStatus('disconnected');
-  toast('Disconnected — using local storage');
+  setSyncStatus('local');
+  toast('Disconnected — local-only mode');
 }
 
 // ── SUPABASE CRUD ────────────────────────────────────────
-// Schema note: this app sends `area_type` to Supabase. If the column doesn't
-// exist, upserts will fail and we fall back to legacy upserts (which collapse
-// neighborhoods into whole-ZIP rows). For the new model to work end-to-end,
-// add this column to the zip_tracker table:
-//   area_type text not null default 'zip'
-// And update the unique constraint to (zip, neighborhood, area_type).
-async function loadFromSupabase() {
-  if (!sbClient) return;
-  const { data, error } = await sbClient.from('zip_tracker').select('*');
-  if (error) { toast('Sync error: ' + error.message); return; }
-
-  const rows = data || [];
-  const localKeyCount = db && db.zips ? Object.keys(db.zips).length : 0;
-
-  if (rows.length === 0) {
-    if (localKeyCount > 0) {
-      toast('Supabase has no records. Keeping local data safe.');
-    }
-    return;
-  }
-
-  createBackup('pre_sync');
-
-  rows.forEach(row => {
-    const rowZip = normalizeZip(row.zip);
-    const rowNb  = normalizeNeighborhood(row.neighborhood);
-    // Prefer the row's own area_type; fall back to inferring from neighborhood.
-    const rowAreaType = row.area_type
-      ? normalizeAreaType(row.area_type)
-      : (rowNb ? AREA_NB : AREA_ZIP);
-    const key = makeKey(rowZip, rowNb, rowAreaType);
-
-    if (!db.zips[key]) {
-      db.zips[key] = {
-        zip: rowZip,
-        neighborhood: rowAreaType === AREA_NB ? rowNb : '',
-        areaType: rowAreaType,
-        role: row.role || '',
-        distress: row.distress || 'Moderate',
-        works: row.works || '',
-        doesnt: row.doesnt || '',
-        notes: row.notes || '',
-        history: []
-      };
-    }
-
-    if (row.entry_data) {
-      const incoming = row.entry_data;
-      const fingerprint = (e) => (e && (e.isoDate || (String(e.date||'') + '|' + e.active + '|' + e.pending + '|' + e.sold))) || '';
-      const incomingFp = fingerprint(incoming);
-      const existing = db.zips[key].history || [];
-      const alreadyThere = existing.some(h => fingerprint(h) === incomingFp);
-      if (!alreadyThere) {
-        db.zips[key].history.push(incoming);
-        db.zips[key].history.sort((a,b) => String(a.isoDate||'').localeCompare(String(b.isoDate||'')));
-      }
-    }
-
-    db.zips[key].zip = rowZip;
-    db.zips[key].areaType = rowAreaType;
-    if (rowAreaType === AREA_NB) {
-      const currentNb = normalizeNeighborhood(db.zips[key].neighborhood);
-      if (rowNb && rowNb.length > currentNb.length) {
-        db.zips[key].neighborhood = rowNb;
-      } else if (!currentNb && rowNb) {
-        db.zips[key].neighborhood = rowNb;
-      }
-    } else {
-      db.zips[key].neighborhood = '';
-    }
-    if (row.role     !== undefined && row.role !== null)     db.zips[key].role     = row.role;
-    if (row.distress !== undefined && row.distress !== null) db.zips[key].distress = row.distress;
-    if (row.works    !== undefined && row.works !== null)    db.zips[key].works    = row.works;
-    if (row.doesnt   !== undefined && row.doesnt !== null)   db.zips[key].doesnt   = row.doesnt;
-    if (row.notes    !== undefined && row.notes !== null)    db.zips[key].notes    = row.notes;
-  });
-
-  // Final safety net: ensure all keys are canonical.
-  migrateLegacyKeys();
-  dedupeZipRecords();
-  saveLocal();
+// Supabase is the source of truth. localStorage is only a cache/backup.
+// Required unique constraint/index: unique(zip, neighborhood, area_type)
+function rowToRecord(row) {
+  const rowZip = normalizeZip(row.zip);
+  const rowNb = normalizeNeighborhood(row.neighborhood);
+  const rowAreaType = normalizeAreaType(row.area_type);
+  const key = makeKey(rowZip, rowNb, rowAreaType);
+  const record = { zip: rowZip, neighborhood: rowAreaType === AREA_NB ? rowNb : '', areaType: rowAreaType, role: row.role || 'Main focus', distress: row.distress || 'Moderate', works: row.works || '', doesnt: row.doesnt || '', notes: row.notes || '', history: [] };
+  if (row.entry_data) record.history.push(row.entry_data);
+  return { key, record };
 }
-
+function mergeRecordInto(target, incoming) {
+  if (!target) return incoming;
+  target.zip = incoming.zip; target.neighborhood = incoming.neighborhood; target.areaType = incoming.areaType;
+  target.role = incoming.role || target.role || 'Main focus'; target.distress = incoming.distress || target.distress || 'Moderate';
+  target.works = incoming.works || target.works || ''; target.doesnt = incoming.doesnt || target.doesnt || ''; target.notes = incoming.notes || target.notes || '';
+  const fingerprint = (e) => (e && (e.isoDate || (String(e.date||'') + '|' + e.active + '|' + e.pending + '|' + e.sold))) || '';
+  const seen = new Set((target.history || []).map(fingerprint));
+  (incoming.history || []).forEach(entry => { const fp = fingerprint(entry); if (!seen.has(fp)) { seen.add(fp); target.history.push(entry); } });
+  target.history.sort((a,b) => String(a.isoDate||'').localeCompare(String(b.isoDate||'')));
+  return target;
+}
+async function loadFromSupabase(replaceLocal = true) {
+  if (!sbClient) throw new Error('Supabase is not connected.');
+  await validateSupabaseSchema();
+  const { data, error } = await sbClient.from('zip_tracker').select('zip,neighborhood,area_type,role,distress,works,doesnt,notes,entry_data,updated_at').order('updated_at', { ascending: true });
+  if (error) throw new Error('Sync error: ' + error.message);
+  createBackup('pre_cloud_load');
+  const cloudDb = { zips: {} };
+  (data || []).forEach(row => { const { key, record } = rowToRecord(row); cloudDb.zips[key] = mergeRecordInto(cloudDb.zips[key], record); });
+  db = cloudDb;
+  migrateLegacyKeys(); dedupeZipRecords(); saveLocal(); return db;
+}
 async function upsertToSupabase(key) {
-  if (!sbClient) return;
-  const z = db.zips[key];
-  if (!z) return;
-  const latest = z.history[z.history.length - 1];
-  const payload = {
-    zip: z.zip,
-    neighborhood: z.areaType === AREA_NB ? (z.neighborhood || '') : '',
-    area_type: z.areaType || AREA_ZIP,
-    role: z.role, distress: z.distress,
-    works: z.works, doesnt: z.doesnt, notes: z.notes,
-    entry_data: latest,
-    updated_at: new Date().toISOString()
-  };
-  // Preferred conflict target includes area_type so a whole-ZIP row and a
-  // neighborhood row inside the same ZIP can coexist.
-  let { error } = await sbClient.from('zip_tracker').upsert(payload, { onConflict: 'zip,neighborhood,area_type' });
-  if (error) {
-    // Fallback 1: maybe area_type column doesn't exist yet. Drop it and use the
-    // (zip, neighborhood) constraint — which still keeps neighborhoods separate.
-    const fallback1 = { ...payload };
-    delete fallback1.area_type;
-    let res = await sbClient.from('zip_tracker').upsert(fallback1, { onConflict: 'zip,neighborhood' });
-    if (res.error) {
-      // Fallback 2: only zip is the constraint (very old schemas). This will
-      // collapse neighborhoods on the server side, which is wrong, so warn.
-      const fallback2 = { ...fallback1 };
-      delete fallback2.neighborhood;
-      res = await sbClient.from('zip_tracker').upsert(fallback2, { onConflict: 'zip' });
-      if (res.error) {
-        toast('Sync error: ' + res.error.message);
-      } else {
-        toast('Saved locally. To keep ZIPs and neighborhoods separate in DB, add area_type column.');
-        setSyncStatus('connected');
-      }
-    } else {
-      setSyncStatus('connected');
-    }
-  } else {
-    setSyncStatus('connected');
-  }
+  if (!sbClient) throw new Error('Supabase is not connected.');
+  await validateSupabaseSchema();
+  const z = db.zips[key]; if (!z) throw new Error('Record not found locally.');
+  const latest = z.history[z.history.length - 1] || null;
+  const payload = { zip: z.zip, neighborhood: z.areaType === AREA_NB ? (z.neighborhood || '') : '', area_type: z.areaType || AREA_ZIP, role: z.role || 'Main focus', distress: z.distress || 'Moderate', works: z.works || '', doesnt: z.doesnt || '', notes: z.notes || '', entry_data: latest, updated_at: new Date().toISOString() };
+  const { error } = await sbClient.from('zip_tracker').upsert(payload, { onConflict: 'zip,neighborhood,area_type' });
+  if (error) throw new Error('Cloud save failed. Fix Supabase. No fallback was used because fallback can corrupt ZIP/neighborhood records. Supabase said: ' + error.message);
+  setSyncStatus('connected');
 }
-
 async function deleteFromSupabase(key) {
-  if (!sbClient) return;
-  const z = db.zips[key];
-  // We may already have removed the record locally — fall back to parsing the key.
-  const zip = normalizeZip(z ? z.zip : parseKey(key).zip);
-  const nb  = normalizeNeighborhood(z ? z.neighborhood : parseKey(key).neighborhood);
-  const areaType = z ? normalizeAreaType(z.areaType) : parseKey(key).areaType;
-  if (!zip) return;
-
-  // Try a precise delete first: zip + neighborhood + area_type.
-  let q = sbClient.from('zip_tracker').delete().eq('zip', zip);
-  if (areaType === AREA_NB) {
-    q = q.eq('neighborhood', nb).eq('area_type', AREA_NB);
-  } else {
-    // Whole-ZIP record: target rows where neighborhood is empty/null AND area_type is zip.
-    // We OR the empty/null neighborhood condition.
-    q = q.or('neighborhood.is.null,neighborhood.eq.').eq('area_type', AREA_ZIP);
-  }
-  let { error } = await q;
-  if (!error) return;
-
-  // Fallback: schema may not have area_type. Match on (zip, neighborhood) only.
-  let q2 = sbClient.from('zip_tracker').delete().eq('zip', zip);
-  if (areaType === AREA_NB) {
-    q2 = q2.eq('neighborhood', nb);
-  } else {
-    q2 = q2.or('neighborhood.is.null,neighborhood.eq.');
-  }
-  const res2 = await q2;
-  if (!res2.error) return;
-
-  // Last resort: delete by zip only. Loud warning because this could nuke
-  // a sibling neighborhood row.
-  if (areaType !== AREA_NB) {
-    const res3 = await sbClient.from('zip_tracker').delete().eq('zip', zip);
-    if (res3.error) toast('Sync error: ' + res3.error.message);
-  } else {
-    toast('Could not delete from DB cleanly. Local copy removed.');
-  }
+  if (!sbClient) throw new Error('Supabase is not connected.');
+  await validateSupabaseSchema();
+  const z = db.zips[key]; const parsed = parseKey(key);
+  const zip = normalizeZip(z ? z.zip : parsed.zip); const nb = normalizeNeighborhood(z ? z.neighborhood : parsed.neighborhood); const areaType = normalizeAreaType(z ? z.areaType : parsed.areaType);
+  if (!zip) throw new Error('Missing ZIP for delete.');
+  let q = sbClient.from('zip_tracker').delete().eq('zip', zip).eq('area_type', areaType);
+  if (areaType === AREA_NB) q = q.eq('neighborhood', nb); else q = q.or('neighborhood.is.null,neighborhood.eq.');
+  const { error } = await q; if (error) throw new Error('Cloud delete failed: ' + error.message);
+  setSyncStatus('connected');
 }
-
 async function updateNotesInSupabase(key) {
-  if (!sbClient) return;
-  const z = db.zips[key];
-  if (!z) return;
-  const zip = normalizeZip(z.zip);
-  const nb  = normalizeNeighborhood(z.neighborhood);
-  const areaType = normalizeAreaType(z.areaType);
-
-  let q = sbClient.from('zip_tracker').update({ notes: z.notes }).eq('zip', zip);
-  if (areaType === AREA_NB) {
-    q = q.eq('neighborhood', nb).eq('area_type', AREA_NB);
-  } else {
-    q = q.or('neighborhood.is.null,neighborhood.eq.').eq('area_type', AREA_ZIP);
-  }
-  const { error } = await q;
-  if (!error) return;
-
-  // Fallback for schemas without area_type
-  let q2 = sbClient.from('zip_tracker').update({ notes: z.notes }).eq('zip', zip);
-  if (areaType === AREA_NB) {
-    q2 = q2.eq('neighborhood', nb);
-  } else {
-    q2 = q2.or('neighborhood.is.null,neighborhood.eq.');
-  }
-  await q2;
+  if (!sbClient) throw new Error('Supabase is not connected.');
+  await validateSupabaseSchema();
+  const z = db.zips[key]; if (!z) throw new Error('Record not found.');
+  const zip = normalizeZip(z.zip); const nb = normalizeNeighborhood(z.neighborhood); const areaType = normalizeAreaType(z.areaType);
+  let q = sbClient.from('zip_tracker').update({ notes: z.notes, updated_at: new Date().toISOString() }).eq('zip', zip).eq('area_type', areaType);
+  if (areaType === AREA_NB) q = q.eq('neighborhood', nb); else q = q.or('neighborhood.is.null,neighborhood.eq.');
+  const { error } = await q; if (error) throw new Error('Cloud note save failed: ' + error.message);
+  setSyncStatus('connected');
 }
 
 // ── TOAST ────────────────────────────────────────────────
@@ -1619,140 +1523,55 @@ async function saveZip() {
   const zip = (document.getElementById('f-zip').value||'').trim();
   const areaType = normalizeAreaType(document.getElementById('f-area-type').value);
   const neighborhoodRaw = (document.getElementById('f-neighborhood').value||'').trim();
-
   if (!zip) { alert('Enter a zip code'); return; }
-  if (areaType === AREA_NB && !neighborhoodRaw) {
-    alert('Neighborhood is required when Area Type is "Neighborhood inside ZIP".');
-    return;
-  }
-
+  if (areaType === AREA_NB && !neighborhoodRaw) { alert('Neighborhood is required when Area Type is "Neighborhood inside ZIP".'); return; }
   const neighborhood = areaType === AREA_NB ? neighborhoodRaw : '';
   const key = makeKey(zip, neighborhood, areaType);
-
-  // Track old neighborhood label so we can clean up a stale Supabase row if the
-  // user fixed a typo (e.g. "parkwod" → "Parkwood"). The KEY won't change because
-  // the key uses lowercased+collapsed nb, but case changes within the same key
-  // can leave a row with different casing on the server.
-  let oldNeighborhood = '';
-  if (editingKey && db.zips[editingKey]) {
-    oldNeighborhood = normalizeNeighborhood(db.zips[editingKey].neighborhood);
-  }
-  const neighborhoodLabelChanged = editingKey && areaType === AREA_NB && oldNeighborhood !== neighborhood;
-
+  const oldRecord = db.zips[key] ? JSON.parse(JSON.stringify(db.zips[key])) : null;
   const isOverwrite = editingKey && db.zips[key] && db.zips[key].history && db.zips[key].history.length > 0;
   if (isOverwrite) {
     const backupChoice = confirm('Do you want to download a PDF backup before saving this new update?\n\nClick OK to download the backup first, or Cancel to skip the backup and save directly.');
-    if (backupChoice) {
-      generateZipPDF(db.zips[key]);
-      await new Promise(resolve => setTimeout(resolve, 400));
-    }
+    if (backupChoice) { generateZipPDF(db.zips[key]); await new Promise(resolve => setTimeout(resolve, 400)); }
   }
-
-  // Hard guard: when ADDING a new record (not editing), block creating a record
-  // whose key collides with an existing one. This is the safety net that makes
-  // sure a user trying to add 40214 whole-ZIP when 40214 whole-ZIP already
-  // exists gets a clear message instead of silently overwriting.
   if (!editingKey && db.zips[key]) {
     const existing = db.zips[key];
-    const existingLabel = existing.areaType === AREA_NB
-      ? (existing.zip + ' — ' + existing.neighborhood + ' (Neighborhood)')
-      : (existing.zip + ' (Whole ZIP)');
-    if (!confirm('A record already exists for ' + existingLabel + '.\n\nClick OK to ADD this week\'s data to the existing record, or Cancel to abort.')) {
-      return;
-    }
+    const existingLabel = existing.areaType === AREA_NB ? (existing.zip + ' — ' + existing.neighborhood + ' (Neighborhood)') : (existing.zip + ' (Whole ZIP)');
+    if (!confirm('A record already exists for ' + existingLabel + '.\n\nClick OK to ADD this week\'s data to the existing record, or Cancel to abort.')) return;
   }
-
   const isoDate = document.getElementById('f-date').value || new Date().toISOString().split('T')[0];
   const dateLabel = new Date(isoDate + 'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
-  const active    = parseFloat(document.getElementById('f-active').value)||0;
-  const pending   = parseFloat(document.getElementById('f-pending').value)||0;
-  const sold      = parseFloat(document.getElementById('f-sold').value)||0;
-  const expired   = parseFloat(document.getElementById('f-expired').value)||0;
-  const dom       = parseFloat(document.getElementById('f-dom').value)||0;
-  const domAvg    = parseFloat(document.getElementById('f-dom-avg').value)||0;
-  const fast      = parseFloat(document.getElementById('f-fast').value)||0;
-  const lsr       = parseFloat(document.getElementById('f-lsr').value)||0;
-  const dropAmt   = parseFloat(document.getElementById('f-drop-amt').value)||0;
-  const listPrice = parseFloat(document.getElementById('f-list-price').value)||0;
-  const lowSale   = parseFloat(document.getElementById('f-low-sale').value)||0;
+  const active = parseFloat(document.getElementById('f-active').value)||0, pending = parseFloat(document.getElementById('f-pending').value)||0, sold = parseFloat(document.getElementById('f-sold').value)||0, expired = parseFloat(document.getElementById('f-expired').value)||0, dom = parseFloat(document.getElementById('f-dom').value)||0, domAvg = parseFloat(document.getElementById('f-dom-avg').value)||0, fast = parseFloat(document.getElementById('f-fast').value)||0, lsr = parseFloat(document.getElementById('f-lsr').value)||0, dropAmt = parseFloat(document.getElementById('f-drop-amt').value)||0, listPrice = parseFloat(document.getElementById('f-list-price').value)||0, lowSale = parseFloat(document.getElementById('f-low-sale').value)||0;
   const calc = calcWeeklyScore({ active, pending, sold, expired, domAvg, fast, lsr, dropAmt, listPrice });
-  const entry = {
-    date: dateLabel, isoDate,
-    active, pending, sold, expired, dom, domAvg, fast, lsr,
-    dropAmt, listPrice, lowSale,
-    dropPct:   parseFloat(calc.dropPct.toFixed(2)),
-    demand:    parseFloat(calc.demandRatio.toFixed(2)),
-    comp:      calc.comp,
-    zipScore:     calc.zipScore,
-    pressureScore: calc.pressureScore,
-    pressureLevel: calc.pressureLevel,
-    status:       calc.status,
-    action:       calc.action,
-    distress:     calc.distress,
-    summary:      calc.summary,
-  };
-  if (!db.zips[key]) {
-    db.zips[key] = { zip, neighborhood, areaType, history:[], role:'', distress:'Moderate', works:'', doesnt:'', notes:'' };
+  const entry = { date: dateLabel, isoDate, active, pending, sold, expired, dom, domAvg, fast, lsr, dropAmt, listPrice, lowSale, dropPct: parseFloat(calc.dropPct.toFixed(2)), demand: parseFloat(calc.demandRatio.toFixed(2)), comp: calc.comp, zipScore: calc.zipScore, pressureScore: calc.pressureScore, pressureLevel: calc.pressureLevel, status: calc.status, action: calc.action, distress: calc.distress, summary: calc.summary };
+  if (!db.zips[key]) db.zips[key] = { zip, neighborhood, areaType, history:[], role:'', distress:'Moderate', works:'', doesnt:'', notes:'' };
+  db.zips[key].zip = zip; db.zips[key].neighborhood = neighborhood; db.zips[key].areaType = areaType; db.zips[key].role = document.getElementById('f-role').value; db.zips[key].distress = calc.distress; db.zips[key].works = document.getElementById('f-works').value; db.zips[key].doesnt = document.getElementById('f-doesnt').value; db.zips[key].notes = document.getElementById('f-notes').value; db.zips[key].history.push(entry);
+  try {
+    if (sbClient) { setSyncStatus('syncing', 'Saving to Supabase first…'); await upsertToSupabase(key); await loadFromSupabase(true); } else setSyncStatus('local');
+    document.getElementById('f-zip').disabled = false; document.getElementById('f-neighborhood').disabled = false; document.getElementById('f-area-type').disabled = false;
+    saveLocal(); toast(sbClient ? 'Saved to cloud!' : 'Saved locally only'); showPage('dashboard');
+  } catch (err) {
+    if (oldRecord) db.zips[key] = oldRecord; else delete db.zips[key];
+    saveLocal(); setSyncStatus('error', err.message); alert(err.message);
   }
-  db.zips[key].zip          = zip;
-  db.zips[key].neighborhood = neighborhood;
-  db.zips[key].areaType     = areaType;
-  db.zips[key].role     = document.getElementById('f-role').value;
-  db.zips[key].distress = calc.distress;
-  db.zips[key].works    = document.getElementById('f-works').value;
-  db.zips[key].doesnt   = document.getElementById('f-doesnt').value;
-  db.zips[key].notes    = document.getElementById('f-notes').value;
-  db.zips[key].history.push(entry);
-
-  document.getElementById('f-zip').disabled = false;
-  document.getElementById('f-neighborhood').disabled = false;
-  document.getElementById('f-area-type').disabled = false;
-  saveLocal();
-  setSyncStatus('syncing');
-  await upsertToSupabase(key);
-
-  // If the neighborhood label CASE changed (same key, different display), the
-  // server may still have the old casing in a separate row from a previous
-  // schema. Try to clean it up so the next loadFromSupabase doesn't re-hydrate
-  // the old casing on top of the new.
-  if (neighborhoodLabelChanged && oldNeighborhood && oldNeighborhood !== neighborhood) {
-    // Best-effort cleanup; ignore errors silently.
-    if (sbClient) {
-      try {
-        await sbClient.from('zip_tracker').delete().eq('zip', zip).eq('neighborhood', oldNeighborhood).eq('area_type', AREA_NB);
-      } catch(e) {}
-    }
-  }
-  toast('Saved!');
-  showPage('dashboard');
 }
 
 async function deleteZip() {
   if (!editingKey) return;
-  const rec = db.zips[editingKey] || {};
-  const zip = rec.zip || parseKey(editingKey).zip;
-  const neighborhood = rec.neighborhood || '';
-  const areaType = normalizeAreaType(rec.areaType);
-  const label = areaType === AREA_NB
-    ? (zip + ' — ' + neighborhood + ' (Neighborhood)')
-    : (zip + ' (Whole ZIP)');
+  const rec = db.zips[editingKey] || {}; const zip = rec.zip || parseKey(editingKey).zip; const neighborhood = rec.neighborhood || ''; const areaType = normalizeAreaType(rec.areaType);
+  const label = areaType === AREA_NB ? (zip + ' — ' + neighborhood + ' (Neighborhood)') : (zip + ' (Whole ZIP)');
   const typed = prompt('Delete ' + label + '?\n\nThis cannot be undone.\nType DELETE (all caps) to confirm:');
-  if (typed !== 'DELETE') {
-    if (typed !== null) toast('Delete cancelled — text did not match');
-    return;
+  if (typed !== 'DELETE') { if (typed !== null) toast('Delete cancelled — text did not match'); return; }
+  const keyToDelete = editingKey; const oldRecord = db.zips[keyToDelete] ? JSON.parse(JSON.stringify(db.zips[keyToDelete])) : null;
+  try {
+    createBackup('pre_delete');
+    if (sbClient) { setSyncStatus('syncing', 'Deleting from Supabase first…'); await deleteFromSupabase(keyToDelete); } else setSyncStatus('local');
+    delete db.zips[keyToDelete];
+    document.getElementById('f-zip').disabled = false; document.getElementById('f-neighborhood').disabled = false; document.getElementById('f-area-type').disabled = false;
+    saveLocal(); toast(sbClient ? label + ' deleted from cloud' : label + ' deleted locally'); showPage('dashboard');
+  } catch (err) {
+    if (oldRecord) db.zips[keyToDelete] = oldRecord;
+    saveLocal(); setSyncStatus('error', err.message); alert(err.message);
   }
-  createBackup('pre_delete');
-  // Capture the key first — deleting from the local db wipes the record we
-  // need to read for accurate Supabase targeting.
-  const keyToDelete = editingKey;
-  await deleteFromSupabase(keyToDelete);
-  delete db.zips[keyToDelete];
-  document.getElementById('f-zip').disabled = false;
-  document.getElementById('f-neighborhood').disabled = false;
-  document.getElementById('f-area-type').disabled = false;
-  saveLocal();
-  toast(label + ' deleted');
-  showPage('dashboard');
 }
 
 // ── SCORING ──────────────────────────────────────────────
@@ -2015,29 +1834,46 @@ function renderDetail(key) {
 }
 
 async function saveNotes(key) {
+  const oldNotes = db.zips[key] ? db.zips[key].notes : '';
   db.zips[key].notes = document.getElementById('notes-ta').value;
-  saveLocal();
-  await updateNotesInSupabase(key);
-  const btn = document.querySelector('.save-notes-btn');
-  btn.textContent = 'Saved!';
-  setTimeout(() => btn.textContent = 'Save notes', 1500);
+  try {
+    if (sbClient) { setSyncStatus('syncing', 'Saving notes to Supabase…'); await updateNotesInSupabase(key); } else setSyncStatus('local');
+    saveLocal();
+    const btn = document.querySelector('.save-notes-btn');
+    btn.textContent = sbClient ? 'Saved to cloud!' : 'Saved locally';
+    setTimeout(() => btn.textContent = 'Save notes', 1500);
+  } catch (err) {
+    db.zips[key].notes = oldNotes;
+    saveLocal(); setSyncStatus('error', err.message); alert(err.message);
+  }
 }
 
 // ── INIT ────────────────────────────────────────────────
 async function init() {
-  loadLocal();
-  renderDashboard();
   const { url, key } = getSbCreds();
   if (url && key) {
-    const ok = initSupabase(url, key);
-    if (ok) {
-      setSyncStatus('syncing');
-      await loadFromSupabase();
+    try {
+      setSyncStatus('loading', 'Loading cloud data from Supabase before showing the dashboard…');
+      const ok = initSupabase(url, key);
+      if (!ok) throw new Error('Stored Supabase credentials are invalid.');
+      await validateSupabaseSchema();
+      await loadFromSupabase(true);
       setSyncStatus('connected');
       renderDashboard();
+      return;
+    } catch (err) {
+      sbClient = null;
+      setSyncStatus('error', err.message);
+      loadLocal();
+      renderDashboard();
+      return;
     }
   }
+  loadLocal();
+  setSyncStatus('local');
+  renderDashboard();
 }
+
 
 init();
 </script>
